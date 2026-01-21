@@ -1,12 +1,14 @@
 // ==UserScript==
-// @name         Redirect & Auto Copy ID (Fixed)
+// @name         Redirect & Auto Copy ID
 // @namespace    
-// @version      1.6
+// @version      1.7
 // @description  Sửa lỗi không copy được ID vào Clipboard
 // @author       Minty
 // @match        *://*/redirect?*
 // @grant        GM_setClipboard
 // @run-at       document-start
+// @updateURL    https://raw.githubusercontent.com/miinty0/draft/main/redirect%20+%20copy%20ID.user.js
+// @downloadURL    https://raw.githubusercontent.com/miinty0/draft/main/redirect%20+%20copy%20ID.user.js
 // ==/UserScript==
 
 (function() {
