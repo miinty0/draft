@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '0.5.4';
+    const VERSION = '1.1';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
