@@ -7,8 +7,8 @@
 // @match        *://*/redirect?*
 // @grant        GM_setClipboard
 // @run-at       document-start
-// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/redirect%20+%20copy%20ID.user.js
-// @downloadURL    https://github.com/miinty0/draft/raw/refs/heads/main/redirect%20+%20copy%20ID.user.js
+// @updateURL    https://raw.githubusercontent.com/miinty0/draft/main/redirect%20+%20copy%20ID.user.js
+// @downloadURL    https://raw.githubusercontent.com/miinty0/draft/main/redirect%20+%20copy%20ID.user.js
 
 // ==/UserScript==
 
