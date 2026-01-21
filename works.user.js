@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.4
+// @version      1.5
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '1.1';
+    const VERSION = '1.5';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
@@ -1234,11 +1234,11 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; min-height: 25px; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 6px;">
         <div id="results-header-text" style="font-weight: bold; color: #ccc; font-size: 12px;">Đang tải...</div>
 
-        <div class="selection-toolbar" id="selection-toolbar">
-            <div class="selection-info">Đã chọn: <span id="selected-count">0</span></div>
-            <button class="btn-deselect" data-action="deselect-all">Bỏ chọn</button>
-            <button class="btn-batch-open" data-action="batch-open">Mở hàng loạt</button>
-        </div>
+       <div class="selection-toolbar active" id="selection-toolbar">
+    <div class="selection-info">Công cụ:</div>
+    <button class="btn-deselect" data-action="deselect-all">Bỏ chọn tất cả</button>
+    <button class="btn-batch-open" data-action="batch-open">Mở hàng loạt?</button>
+</div>
     </div>
 
     <div id="results-container"></div>
@@ -1251,13 +1251,8 @@
         const toolbar = shadow.querySelector('#selection-toolbar');
         const countEl = shadow.querySelector('#selected-count');
         if (toolbar && countEl) {
-            if (checked.length > 0) {
-                toolbar.classList.add('active');
                 countEl.textContent = checked.length;
-            } else {
-                toolbar.classList.remove('active');
             }
-        }
     };
 
     shadow.addEventListener('click', async (e) => {
@@ -1282,13 +1277,29 @@
             shadow.querySelectorAll('.result-item-checkbox').forEach(cb => cb.checked = false);
             updateSelectionUI();
         }
-        if (action === 'batch-open') {
-            const checked = Array.from(shadow.querySelectorAll('.result-item-checkbox:checked'));
-            const urls = checked.map(cb => cb.dataset.url);
-            if (!urls.length) return;
-            if (urls.length > 5 && !window.confirm(`Bạn sắp mở ${urls.length} tab mới. Có thể gây lag máy, tiếp tục?`)) return;
-            urls.forEach(url => GM_openInTab(url, { active: false, insert: true }));
-        }
+       if (action === 'batch-open') {
+    // 1. Cho người dùng nhập số lượng
+    const input = window.prompt("Bạn muốn mở bao nhiêu truyện?", "5?");
+    const count = parseInt(input);
+
+    if (isNaN(count) || count <= 0) {
+        return;
+    }
+
+    // 2. Lấy tất cả các checkbox (mỗi checkbox đại diện cho 1 truyện trong kết quả lọc)
+    const allItems = Array.from(shadow.querySelectorAll('.result-item-checkbox'));
+    
+    // 3. Lấy URL của N truyện đầu tiên
+    const urls = allItems.slice(0, count).map(cb => cb.dataset.url);
+
+    if (urls.length === 0) {
+        alert("Không tìm thấy truyện nào để mở.");
+        return;
+    }
+
+    // 4. Mở hàng loạt
+    urls.forEach(url => GM_openInTab(url, { active: false, insert: true }));
+}
         if (action === 'manual-remove') {
             await handleManualRemove(target.dataset.id);
             shadow.querySelector('button[data-action="apply"]').click();
