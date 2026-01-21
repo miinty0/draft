@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.5
+// @version      1.6
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '1.5';
+    const VERSION = '1.6';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
@@ -1235,8 +1235,7 @@
         <div id="results-header-text" style="font-weight: bold; color: #ccc; font-size: 12px;">Đang tải...</div>
 
        <div class="selection-toolbar active" id="selection-toolbar">
-    <div class="selection-info">Công cụ:</div>
-    <button class="btn-deselect" data-action="deselect-all">Bỏ chọn tất cả</button>
+<div class="selection-info">Đã chọn: <span id="selected-count">0</span></div>    <button class="btn-deselect" data-action="deselect-all">Bỏ chọn tất cả</button>
     <button class="btn-batch-open" data-action="batch-open">Mở hàng loạt?</button>
 </div>
     </div>
@@ -1359,7 +1358,7 @@
 
       // Reset toolbar về trạng thái ẩn mỗi khi lọc mới
       const toolbar = shadow.querySelector('#selection-toolbar');
-      if (toolbar) toolbar.classList.remove('active');
+      if (toolbar) toolbar.classList.add('active');
   };
 
     const readMaxPages = (doc) => {
