@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.2
+// @version      1.3
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -205,7 +205,13 @@
                             <div style="font-size:12px; opacity:0.8;">Chỉ tải tóm tắt cho các truyện chưa có. Hữu ích khi danh sách truyện đã đủ.</div>
                         </div>
                     </label>
-
+<label class="sync-option" style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; cursor:pointer;">
+    <input type="radio" name="sync-mode" value="missing_stats" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
+    <div>
+        <strong style="color:#fff;">Đồng bộ stat thiếu</strong>
+        <div style="font-size:12px; opacity:0.8;">Chỉ vào link truyện để cập nhật "Cảm ơn".</div>
+    </div>
+</label>
                 </div>
                 <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top:16px;">
                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -1375,20 +1381,28 @@
         return doc.querySelector('.book-info') ? 1 : 0;
     };
 
- // Thay thế hàm handleSync và các hàm liên quan trong script của bạn bằng đoạn này:
-
     const handleSync = async () => {
-        if (state.syncing) { notify(TEXT.syncRunning, true); return; }
-        const options = await askSyncOptions();
-        if (!options) return;
+    if (state.syncing) { notify(TEXT.syncRunning, true); return; }
 
-        setTimeout(async () => {
-            const started = Date.now();
-            state.syncing = true;
-            state.abort = false;
+    // CẢNH BÁO 3 NGÀY
+    if (state.cache && state.cache.syncedAt) {
+        const lastSync = new Date(state.cache.syncedAt).getTime();
+        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+        if (Date.now() - lastSync < threeDaysMs) {
+            if (!window.confirm(`Bạn đã đồng bộ chưa quá 3 ngày. Bạn có muốn tiếp tục?`)) return;
+        }
+    }
 
-            // Chế độ đồng bộ
-            const isFullSync = options.mode.startsWith('full');
+    const options = await askSyncOptions();
+    if (!options) return;
+
+    setTimeout(async () => {
+        const started = Date.now();
+        state.syncing = true;
+        state.abort = false;
+
+        const isFullSync = options.mode.startsWith('full');
+        const isMissingStats = options.mode === 'missing_stats'; 
             // Khởi tạo/Lấy cache cũ
             let aggregated = (state.cache) ? state.cache : { books: {}, bookIds: [], username: state.username, version: STORE_VERSION };
 
@@ -1423,9 +1437,51 @@
                     });
                     updateOverlay({ progress: (p / maxPages) * 30, meta: `Đã quét ${p}/${maxPages} trang danh sách` });
                 }
+// GIAI ĐOẠN 2: LỌC VÀ CẬP NHẬT TRUYỆN THIẾU STAT (B2, B3)
+if (isMissingStats) {
+    const updatedTitles = []; // Danh sách truyện đã chạy cập nhật (B4)
+    const targetIds = aggregated.bookIds.filter(id => {
+        const b = aggregated.books[id];
+        const status = norm(b.status);
+        // B2: Còn tiếp + rating và comment và cảm ơn (xét theo cache cũ) = 0
+        const isOngoing = status === 'con tiep';
+        const stats = b.stats || {};
+        const isZeroStats = (stats.rating || 0) === 0 && (stats.comments || 0) === 0 && (stats.thanks || 0) === 0;
+        return isOngoing && isZeroStats;
+    });
 
-                // GIAI ĐOẠN 2: LỌC TRẠNG THÁI VÀ CẬP NHẬT CHI TIẾT (Tóm tắt + Stats)
-                // Chỉ xét: Còn tiếp, Tạm ngừng, Chưa xác minh
+    if (targetIds.length > 0) {
+        updateOverlay({ text: `Đang cập nhật stat thiếu cho ${targetIds.length} truyện`, progress: 30 });
+        let done = 0;
+        for (const id of targetIds) {
+            if (state.abort) throw new Error(TEXT.syncAbort);
+            const book = aggregated.books[id];
+            
+            // B3: Vào link truyện cập nhật cảm ơn
+            try {
+                const bookDoc = await fetchDocument(0, { overrideUrl: book.url });
+                const detailedInfo = await parseBookFromPage(bookDoc, id, book.url, state.username);
+                
+                if (detailedInfo) {
+                    aggregated.books[id] = { ...aggregated.books[id], ...detailedInfo };
+                    updatedTitles.push(detailedInfo.title);
+                }
+            } catch (e) { console.warn(`Lỗi truyện ${id}:`, e); }
+
+            done++;
+            updateOverlay({ 
+                progress: 30 + (done / targetIds.length) * 70, 
+                meta: `Đang chạy: ${done}/${targetIds.length} - ${book.title}` 
+            });
+            await sleep(options.delay);
+        }
+        // B4: Hiện danh sách truyện đã chạy (Log ra console và hiện thông báo)
+        console.log("Danh sách truyện đã cập nhật cảm ơn:", updatedTitles);
+        alert(`Đã cập nhật cảm ơn cho ${updatedTitles.length} truyện:\n${updatedTitles.slice(0, 10).join('\n')}${updatedTitles.length > 10 ? '\n...' : ''}`);
+    } else {
+        alert("Không tìm thấy truyện nào thỏa điều kiện (Còn tiếp & Stats = 0).");
+    }
+} else {
                 const allowedStatus = ['con tiep', 'tam ngung', 'chua xac minh'];
                 const targetIds = aggregated.bookIds.filter(id => {
                     const status = norm(aggregated.books[id].status);
@@ -1472,7 +1528,7 @@
                         if (completed % 5 === 0) await saveCache(aggregated);
                     }
                 }
-
+}
                 const duration = Date.now() - started;
                 aggregated.syncedAt = new Date().toISOString();
                 aggregated.durationMs = duration;
