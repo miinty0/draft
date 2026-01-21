@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Redirect & Auto Copy ID
 // @namespace    
-// @version      1.7
+// @version      1.8
 // @description  Sửa lỗi không copy được ID vào Clipboard
 // @author       Minty
 // @match        *://*/redirect?*
@@ -52,25 +52,36 @@
 
     function showToast(id) {
         const toast = document.createElement('div');
-        toast.innerHTML = `Đã copy ID: <b style="color: #ffeb3b;">${id}</b><br><small style="font-size: 12px;">Đang chuyển hướng...</small>`;
-        
+toast.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="background: #fff; color: #2ecc71; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">✓</div>
+                <div>Đã copy ID: <b>${id}</b></div>
+            </div>
+        `;        
         Object.assign(toast.style, {
             position: 'fixed',
-            top: '50%',
+            top: '20px', // Đưa lên phía trên cho hiện đại
             left: '50%',
-            transform: 'translate(-50%, -50%)',
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            transform: 'translateX(-50%) translateY(0)',
+            backgroundColor: 'rgba(46, 204, 113, 0.95)',
             color: '#fff',
-            padding: '20px 40px',
-            borderRadius: '12px',
-            fontSize: '20px',
-            fontFamily: 'sans-serif',
-            zIndex: '999999',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            textAlign: 'center',
-            minWidth: '300px'
+            padding: '10px 20px',
+            borderRadius: '50px', 
+            fontSize: '14px',
+            fontFamily: 'Segoe UI, Roboto, sans-serif',
+            zIndex: '1000000',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+            backdropFilter: 'blur(5px)', 
+            transition: 'all 0.3s ease',
+            whiteSpace: 'nowrap'
         });
-
+toast.style.opacity = '0';
+        toast.style.top = '10px';
         document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '1';
+            toast.style.top = '20px';
+        }, 10);
     }
 })();
