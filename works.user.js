@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.6
+// @version      1.7
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '1.6';
+    const VERSION = '1.7';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
@@ -1278,7 +1278,7 @@
         }
        if (action === 'batch-open') {
     // 1. Cho người dùng nhập số lượng
-    const input = window.prompt("Bạn muốn mở bao nhiêu truyện?", "5?");
+    const input = window.prompt("Bạn muốn mở bao nhiêu truyện?", "5");
     const count = parseInt(input);
 
     if (isNaN(count) || count <= 0) {
