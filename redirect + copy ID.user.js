@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Redirect & Auto Copy ID
 // @namespace    
-// @version      1.2
+// @version      1.3
 // @description  Redirect và tự động copy mã truyện vào Clipboard
 // @author       Minty
 // @match        *://*/redirect?*
