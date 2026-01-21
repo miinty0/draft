@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Redirect & Auto Copy ID (Fixed)
 // @namespace    
-// @version      1.5.1
+// @version      1.6
 // @description  Sửa lỗi không copy được ID vào Clipboard
 // @author       Minty
 // @match        *://*/redirect?*
