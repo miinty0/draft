@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.3
+// @version      1.4
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -14,10 +14,11 @@
 // @updateURL    https://raw.githubusercontent.com/miinty0/draft/main/works.user.js
 // @downloadURL  https://raw.githubusercontent.com/miinty0/draft/main/works.user.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js
-// fork từ script của github.com/BaoBao666888, mình sửa lại theo ý mình (code mình khá ngu + rác nhiều) nên ko muốn làm phiền từ script gốc =)))
 // ==/UserScript==
 
 /* global localforage */
+// fork từ script của github.com/BaoBao666888, mình sửa lại theo ý mình (code mình khá ngu + rác nhiều) nên ko muốn làm phiền từ script gốc =)))
+
 (function() {
     'use strict';
 
@@ -171,47 +172,33 @@
             dialog.style.cssText = 'position:fixed;inset:0;background:rgba(5,10,15,0.85);display:flex;align-items:center;justify-content:center;z-index:99999;color:#fff;font-family:Segoe UI,sans-serif;';
             dialog.innerHTML = `
             <style>
-                .sync-option {
-                    border: 1px solid transparent;
-                    transition: background-color 0.2s, border-color 0.2s;
-                }
-                .sync-option:has(input:checked) {
-                    background-color: rgba(57, 197, 255, 0.1) !important;
-                    border-color: #39c5ff;
-                }
+                .sync-option { border: 1px solid transparent; transition: background-color 0.2s, border-color 0.2s; }
+                .sync-option:has(input:checked) { background-color: rgba(57, 197, 255, 0.1) !important; border-color: #39c5ff; }
             </style>
             <div style="background:#101722;padding:22px;border-radius:14px;min-width:420px;text-align:left;box-shadow:0 16px 36px rgba(0,0,0,.35);">
                 <h3 style="margin:0 0 16px;font-size:16px;font-weight:600;">Tùy chọn đồng bộ</h3>
                 <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
                     <label class="sync-option" style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; cursor:pointer;">
-                        <input type="radio" name="sync-mode" value="full_no_summary" checked style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
+                        <input type="radio" name="sync-mode" value="quick" checked style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
                         <div>
-                            <strong style="color:#fff;">Đồng bộ nhanh</strong>
-                            <div style="font-size:12px; opacity:0.8;">Quét lại danh sách truyện và thông tin cơ bản. Tốc độ nhanh nhất.</div>
+                            <strong style="color:#fff;">1. Đồng bộ nhanh</strong>
+                            <div style="font-size:12px; opacity:0.8;">Quét info cơ bản.</div>
                         </div>
                     </label>
                     <label class="sync-option" style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; cursor:pointer;">
-                        <input type="radio" name="sync-mode" value="full_with_summary" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
+                        <input type="radio" name="sync-mode" value="full" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
                         <div>
-                            <strong style="color:#fff;">Đồng bộ đầy đủ </strong>
-                            <div style="font-size:12px; opacity:0.8;">Quét tất cả thông tin, bao gồm cả tóm tắt. Sẽ mất nhiều thời gian hơn.</div>
+                            <strong style="color:#fff;">2. Đồng bộ đầy đủ</strong>
+                            <div style="font-size:12px; opacity:0.8;">Quét toàn bộ info.</div>
                         </div>
                     </label>
-
                     <label class="sync-option" style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; cursor:pointer;">
-                        <input type="radio" name="sync-mode" value="summary_only" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
+                        <input type="radio" name="sync-mode" value="complete" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
                         <div>
-                            <strong style="color:#fff;">Chỉ đồng bộ tóm tắt</strong>
-                            <div style="font-size:12px; opacity:0.8;">Chỉ tải tóm tắt cho các truyện chưa có. Hữu ích khi danh sách truyện đã đủ.</div>
+                            <strong style="color:#fff;">3. Hoàn thiện info</strong>
+                            <div style="font-size:12px; opacity:0.8;">Quét info còn thiếu.</div>
                         </div>
                     </label>
-<label class="sync-option" style="display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; cursor:pointer;">
-    <input type="radio" name="sync-mode" value="missing_stats" style="width:18px; height:18px; accent-color:#39c5ff; pointer-events:none;">
-    <div>
-        <strong style="color:#fff;">Đồng bộ stat thiếu</strong>
-        <div style="font-size:12px; opacity:0.8;">Chỉ vào link truyện để cập nhật "Cảm ơn".</div>
-    </div>
-</label>
                 </div>
                 <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top:16px;">
                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -234,15 +221,11 @@
             dialog.addEventListener('click', (e) => {
                 const button = e.target.closest('button[data-action]');
                 const action = button ? button.dataset.action : null;
-
                 const label = e.target.closest('.sync-option');
                 if (label) {
                     const radio = label.querySelector('input[type="radio"]');
-                    if (radio) {
-                        radio.checked = true;
-                    }
+                    if (radio) radio.checked = true;
                 }
-
                 if (action === 'cancel') {
                     dialog.remove();
                     resolve(null);
@@ -254,7 +237,6 @@
                     resolve({ mode, threads, delay });
                 }
             });
-
             document.body.appendChild(dialog);
         });
     };
@@ -1382,157 +1364,97 @@
     };
 
     const handleSync = async () => {
-    if (state.syncing) { notify(TEXT.syncRunning, true); return; }
+        if (state.syncing) { notify(TEXT.syncRunning, true); return; }
 
-    // CẢNH BÁO 3 NGÀY
-    if (state.cache && state.cache.syncedAt) {
-        const lastSync = new Date(state.cache.syncedAt).getTime();
-        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-        if (Date.now() - lastSync < threeDaysMs) {
-            if (!window.confirm(`Bạn đã đồng bộ chưa quá 3 ngày. Bạn có muốn tiếp tục?`)) return;
+        if (state.cache && state.cache.syncedAt) {
+            const lastSync = new Date(state.cache.syncedAt).getTime();
+            const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+            if (Date.now() - lastSync < threeDaysMs) {
+                if (!window.confirm(`Bạn đã đồng bộ chưa quá 3 ngày. Tiếp tục?`)) return;
+            }
         }
-    }
 
-    const options = await askSyncOptions();
-    if (!options) return;
+        const options = await askSyncOptions();
+        if (!options) return;
 
-    setTimeout(async () => {
-        const started = Date.now();
-        state.syncing = true;
-        state.abort = false;
-
-        const isFullSync = options.mode.startsWith('full');
-        const isMissingStats = options.mode === 'missing_stats'; 
-            // Khởi tạo/Lấy cache cũ
+        setTimeout(async () => {
+            const started = Date.now();
+            state.syncing = true;
+            state.abort = false;
             let aggregated = (state.cache) ? state.cache : { books: {}, bookIds: [], username: state.username, version: STORE_VERSION };
+            const mode = options.mode;
 
             try {
-                // GIAI ĐOẠN 1: LẤY TẤT CẢ DANH SÁCH TỪ TẤT CẢ CÁC TRANG
-                updateOverlay({ text: 'Giai đoạn 1: Lấy danh sách truyện từ các trang', progress: 0 });
+                // --- BƯỚC 1: LẤY DANH SÁCH (Mode Quick và Full) ---
+                if (mode === 'quick' || mode === 'full') {
+                    updateOverlay({ text: 'Giai đoạn 1: Lấy danh sách truyện', progress: 0 });
+                    const firstDoc = await fetchDocument(0);
+                    const firstData = extractFromDocument(firstDoc);
+                    if (!firstData.list.length) throw new Error('Không đọc được danh sách.');
 
-                const firstDoc = await fetchDocument(0);
-                const firstData = extractFromDocument(firstDoc);
-                if (!firstData.list.length) throw new Error('Không đọc được danh sách works.');
+                    const mergeData = (list) => {
+                        list.forEach(b => {
+                            if (!aggregated.books[b.id]) aggregated.bookIds.push(b.id);
+                            // Cập nhật info cơ bản từ trang danh sách
+                            aggregated.books[b.id] = { ...aggregated.books[b.id], ...b };
+                        });
+                    };
 
-                // Cập nhật trang đầu tiên
-                firstData.list.forEach(b => {
-                    if (!aggregated.books[b.id]) {
-                        aggregated.bookIds.push(b.id);
+                    mergeData(firstData.list);
+                    let pageSize = firstData.pageSize || 10;
+                    let maxPages = readMaxPages(firstDoc);
+
+                    for (let p = 2; p <= maxPages; p++) {
+                        if (state.abort) throw new Error(TEXT.syncAbort);
+                        await sleep(options.delay);
+                        const doc = await fetchDocument((p - 1) * pageSize);
+                        mergeData(extractFromDocument(doc).list);
+                        updateOverlay({ progress: (p / maxPages) * 30, meta: `Đang quét trang ${p}/${maxPages}` });
                     }
-                    aggregated.books[b.id] = b; // Ghi đè thông tin cơ bản mới nhất
-                });
+                }
 
-                let pageSize = firstData.pageSize || 10;
-                let maxPages = readMaxPages(firstDoc);
-
-                for (let p = 2; p <= maxPages; p++) {
-                    if (state.abort) throw new Error(TEXT.syncAbort);
-                    await sleep(options.delay);
-                    const doc = await fetchDocument((p - 1) * pageSize);
-                    extractFromDocument(doc).list.forEach(b => {
-                        if (!aggregated.books[b.id]) {
-                            aggregated.bookIds.push(b.id);
-                        }
-                        aggregated.books[b.id] = b;
+                // --- BƯỚC 2: XÁC ĐỊNH TRUYỆN CẦN TẢI CHI TIẾT ---
+                let targetIds = [];
+                if (mode === 'full') {
+                    targetIds = [...aggregated.bookIds];
+                } else if (mode === 'complete') {
+                    targetIds = aggregated.bookIds.filter(id => {
+                        const b = aggregated.books[id];
+                        const s = b.stats || {};
+                        const missingInfo = !b.summary || !b.tags || b.tags.length <= 1;
+                        const allStatsZero = (s.rating || 0) === 0 && (s.comments || 0) === 0 && (s.thanks || 0) === 0;
+                        // Điều kiện: Thiếu tags/tóm tắt HOẶC cả 3 stat đều bằng 0
+                        return missingInfo || allStatsZero;
                     });
-                    updateOverlay({ progress: (p / maxPages) * 30, meta: `Đã quét ${p}/${maxPages} trang danh sách` });
                 }
-// GIAI ĐOẠN 2: LỌC VÀ CẬP NHẬT TRUYỆN THIẾU STAT (B2, B3)
-if (isMissingStats) {
-    const updatedTitles = []; // Danh sách truyện đã chạy cập nhật (B4)
-    const targetIds = aggregated.bookIds.filter(id => {
-        const b = aggregated.books[id];
-        const status = norm(b.status);
-        // B2: Còn tiếp + rating và comment và cảm ơn (xét theo cache cũ) = 0
-        const isOngoing = status === 'con tiep';
-        const stats = b.stats || {};
-        const isZeroStats = (stats.rating || 0) === 0 && (stats.comments || 0) === 0 && (stats.thanks || 0) === 0;
-        return isOngoing && isZeroStats;
-    });
 
-    if (targetIds.length > 0) {
-        updateOverlay({ text: `Đang cập nhật stat thiếu cho ${targetIds.length} truyện`, progress: 30 });
-        let done = 0;
-        for (const id of targetIds) {
-            if (state.abort) throw new Error(TEXT.syncAbort);
-            const book = aggregated.books[id];
-            
-            // B3: Vào link truyện cập nhật cảm ơn
-            try {
-                const bookDoc = await fetchDocument(0, { overrideUrl: book.url });
-                const detailedInfo = await parseBookFromPage(bookDoc, id, book.url, state.username);
-                
-                if (detailedInfo) {
-                    aggregated.books[id] = { ...aggregated.books[id], ...detailedInfo };
-                    updatedTitles.push(detailedInfo.title);
-                }
-            } catch (e) { console.warn(`Lỗi truyện ${id}:`, e); }
-
-            done++;
-            updateOverlay({ 
-                progress: 30 + (done / targetIds.length) * 70, 
-                meta: `Đang chạy: ${done}/${targetIds.length} - ${book.title}` 
-            });
-            await sleep(options.delay);
-        }
-        // B4: Hiện danh sách truyện đã chạy (Log ra console và hiện thông báo)
-        console.log("Danh sách truyện đã cập nhật cảm ơn:", updatedTitles);
-        alert(`Đã cập nhật cảm ơn cho ${updatedTitles.length} truyện:\n${updatedTitles.slice(0, 10).join('\n')}${updatedTitles.length > 10 ? '\n...' : ''}`);
-    } else {
-        alert("Không tìm thấy truyện nào thỏa điều kiện (Còn tiếp & Stats = 0).");
-    }
-} else {
-                const allowedStatus = ['con tiep', 'tam ngung', 'chua xac minh'];
-                const targetIds = aggregated.bookIds.filter(id => {
-                    const status = norm(aggregated.books[id].status);
-                    return allowedStatus.includes(status);
-                });
-
+                // --- BƯỚC 3: TẢI CHI TIẾT ---
                 if (targetIds.length > 0) {
-                    updateOverlay({ text: `Giai đoạn 2: Tải chi tiết cho ${targetIds.length} truyện`, progress: 30 });
-
+                    updateOverlay({ text: `Giai đoạn 2: Tải chi tiết (${targetIds.length} truyện)`, progress: 30 });
                     let completed = 0;
                     for (const id of targetIds) {
                         if (state.abort) throw new Error(TEXT.syncAbort);
-
                         const book = aggregated.books[id];
                         try {
-                            // Truy cập trực tiếp trang chi tiết truyện
                             const bookDoc = await fetchDocument(0, { overrideUrl: book.url });
-
-                            // Sử dụng hàm parseBookFromPage có sẵn của bạn để lấy Tóm tắt + Full Stats
-                            const detailedInfo = await parseBookFromPage(bookDoc, id, book.url, state.username);
-
-                            if (detailedInfo) {
-                                // Cập nhật lại toàn bộ dữ liệu 
-                                aggregated.books[id] = { ...aggregated.books[id], ...detailedInfo };
+                            const detailed = await parseBookFromPage(bookDoc, id, book.url, state.username);
+                            if (detailed) {
+                                aggregated.books[id] = { ...aggregated.books[id], ...detailed };
                             }
-                        } catch (e) {
-                            console.warn(`Lỗi khi tải chi tiết truyện ${id}:`, e);
-                        }
+                        } catch (e) { console.warn(`Lỗi truyện ${id}:`, e); }
 
                         completed++;
-                        const subProgress = 30 + (completed / targetIds.length) * 70;
-                        const elapsed = Date.now() - started;
-                        const eta = (elapsed / completed) * (targetIds.length - completed);
-
                         updateOverlay({
-                            progress: subProgress,
-                            meta: `Đang xử lý: ${completed}/${targetIds.length} - ETA: ${fmtDuration(eta)}`
+                            progress: 30 + (completed / targetIds.length) * 70,
+                            meta: `Đang xử lý: ${completed}/${targetIds.length} - ${book.title}`
                         });
-
-                        // Delay để tránh bị Cloudflare chặn
                         await sleep(options.delay);
-
-                        // Lưu cache tạm thời sau mỗi 5 truyện để đề phòng crash
                         if (completed % 5 === 0) await saveCache(aggregated);
                     }
                 }
-}
-                const duration = Date.now() - started;
-                aggregated.syncedAt = new Date().toISOString();
-                aggregated.durationMs = duration;
 
+                aggregated.syncedAt = new Date().toISOString();
+                aggregated.durationMs = Date.now() - started;
                 await saveCache(aggregated);
                 notify(TEXT.syncDone);
 
