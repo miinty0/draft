@@ -144,15 +144,26 @@
         url.hash = '';
         const parts = url.pathname.split('/').filter(Boolean);
         const idx = parts.indexOf('user');
-        if (idx === -1 || idx + 1 >= parts.length) return null;
-        const username = decodeURIComponent(parts[idx + 1]);
+if (idx !== -1 && idx + 1 < parts.length) {
+    const username = decodeURIComponent(parts[idx + 1]);
         const mode = parts[idx + 2] || 'works';
         const basePath = `/user/${encodeURIComponent(username)}/${mode}`;
         const baseQuery = new URLSearchParams(url.search);
         baseQuery.delete('start');
         return { username, mode, basePath, baseQuery };
-    };
+    }
+        const loggedInUser = getCurrentUser(document);
+    if (loggedInUser) {
+        return { 
+            username: loggedInUser, 
+            mode: 'works', 
+            basePath: `/user/${encodeURIComponent(loggedInUser)}/works`, 
+            baseQuery: new URLSearchParams() 
+        };
+    }
 
+    return null;
+};
     const getCurrentUser = (doc) => {
         // Lấy link trong menu user
         const profileLink = doc.querySelector('nav .nav-wrapper #ddUser a[href^="/user/"]');
@@ -1006,8 +1017,9 @@
 
         try {
             const parsedUrl = new URL(url);
-            if (!ALLOWED_HOSTNAMES.includes(parsedUrl.hostname) || !parsedUrl.pathname.startsWith('/truyen/')) {
-                throw new Error('URL không hợp lệ.');
+const isAllowedHost = ALLOWED_HOSTNAMES.some(ext => parsedUrl.hostname.endsWith(ext));
+if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
+    throw new Error('URL không hợp lệ.');
             }
             updateOverlay({ text: 'Đang tải và xử lý truyện...', progress: 50, meta: '' });
             const response = await fetch(parsedUrl.href);
@@ -1781,10 +1793,12 @@ const initializeWorksPage = async () => {
 };
 
 const bootstrap = async () => {
-    const path = window.location.pathname;
-    if (path.includes('/user/') && path.includes('/works')) {
+const isWorksPage = path.includes('/user/') && path.includes('/works');
+    const isStoryPage = path.startsWith('/truyen/');
+    if (isWorksPage) {
         await initializeWorksPage();
-    } else if (path.startsWith('/truyen/')) {
+    } else if (isStoryPage) {
+        await initializeWorksPage();
         await initializeStoryPage();
     }
 };
