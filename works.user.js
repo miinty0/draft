@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
-// @namespace    
-// @version      1.8
+// @namespace
+// @version      1.9
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '1.8';
+    const VERSION = '1.9';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
@@ -114,7 +114,75 @@
         else if (suffix === 'B') value *= 1_000_000_000;
         return Math.round(value);
     };
+const BookHelper = {
+        DEFAULT_FLAGS: {
+            poster: false,
+            managerOwner: false,
+            managerGuest: false,
+            editorOwner: false,
+            editorGuest: false,
+            private: false,
+            embedLink: false,
+            embedFile: false,
+            duplicate: false,
+            vip: false
+        },
 
+        initEmptyCache: (username, mode = 'works') => ({
+            books: {},
+            bookIds: [],
+            version: STORE_VERSION,
+            username,
+            mode,
+            syncedAt: null,
+            durationMs: 0
+        }),
+
+        upsertBook: async (bookId, bookData) => {
+            if (!state.cache) {
+                throw new Error('Cache chưa được khởi tạo');
+            }
+            if (!state.cache.books[bookId]) {
+                state.cache.bookIds.unshift(bookId);
+            }
+            const existingBook = state.cache.books[bookId] || {};
+            state.cache.books[bookId] = {
+                ...existingBook,
+                ...bookData,
+                collectedAt: existingBook.collectedAt || new Date().toISOString()
+            };
+            await saveCache(state.cache);
+            return state.cache.books[bookId];
+        },
+
+        parseCommonFields: (data) => {
+            const { title, author, status, stats = {} } = data;
+            return {
+                title,
+                titleNorm: norm(title),
+                author,
+                authorNorm: norm(author),
+                status,
+                statusNorm: norm(status),
+                stats: {
+                    views: stats.views || 0,
+                    rating: stats.rating || 0,
+                    comments: stats.comments || 0,
+                    thanks: stats.thanks || 0
+                }
+            };
+        },
+
+        resetFlags: () => ({ ...BookHelper.DEFAULT_FLAGS }),
+
+        needsFullScan: (book) => {
+            if (!book) return false;
+            const s = book.stats || {};
+            const missingInfo = !book.summary || !book.tags || book.tags.length <= 1;
+            const allStatsZero = (s.rating || 0) === 0 && (s.comments || 0) === 0 && (s.thanks || 0) === 0;
+            return missingInfo || allStatsZero;
+        }
+    };
     const Http = {
         get: (url) => ({
             html: async () => {
@@ -144,32 +212,21 @@
         url.hash = '';
         const parts = url.pathname.split('/').filter(Boolean);
         const idx = parts.indexOf('user');
-if (idx !== -1 && idx + 1 < parts.length) {
-    const username = decodeURIComponent(parts[idx + 1]);
+        if (idx === -1 || idx + 1 >= parts.length) return null;
+        const username = decodeURIComponent(parts[idx + 1]);
         const mode = parts[idx + 2] || 'works';
         const basePath = `/user/${encodeURIComponent(username)}/${mode}`;
         const baseQuery = new URLSearchParams(url.search);
         baseQuery.delete('start');
         return { username, mode, basePath, baseQuery };
-    }
-        const loggedInUser = getCurrentUser(document);
-    if (loggedInUser) {
-        return { 
-            username: loggedInUser, 
-            mode: 'works', 
-            basePath: `/user/${encodeURIComponent(loggedInUser)}/works`, 
-            baseQuery: new URLSearchParams() 
-        };
-    }
+    };
 
-    return null;
-};
     const getCurrentUser = (doc) => {
         // Lấy link trong menu user
         const profileLink = doc.querySelector('nav .nav-wrapper #ddUser a[href^="/user/"]');
         if (profileLink) {
             const href = profileLink.getAttribute('href');
-            const parts = href.split('/').filter(Boolean); 
+            const parts = href.split('/').filter(Boolean);
             const slug = parts[1] || '';
             return decodeURIComponent(slug);
         }
@@ -278,10 +335,10 @@ if (idx !== -1 && idx + 1 < parts.length) {
         wrap.querySelector('button[data-action="resume"]').addEventListener('click', () => {
             state.isPausedByCloudflare = false;
 
-            
+
             updateOverlay({ text: 'Đang tiếp tục đồng bộ...', meta: 'Đã nhận tín hiệu, tiếp tục quét...' });
 
-            const overlay = ensureOverlay(); 
+            const overlay = ensureOverlay();
             overlay.querySelector('.bar').style.display = 'block';
             overlay.querySelector('.controls button[data-action="stop"]').style.display = 'inline-block';
             overlay.querySelector('.controls button[data-action="resume"]').style.display = 'none';
@@ -342,7 +399,7 @@ if (idx !== -1 && idx + 1 < parts.length) {
 
             let specificStyle = 'background:rgba(255,255,255,0.16);';
             if (action === 'clear') specificStyle = 'background:rgba(246,78,96,0.28);';
-            if (action === 'sync') specificStyle = 'background:rgba(57, 197, 255, 0.25);'; 
+            if (action === 'sync') specificStyle = 'background:rgba(57, 197, 255, 0.25);';
 
             btn.style.cssText = `width:100%; border:none; color:#fff; padding:8px 4px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; ${specificStyle}`;
             actionsEl.appendChild(btn);
@@ -451,7 +508,7 @@ if (idx !== -1 && idx + 1 < parts.length) {
         summary.style.display = 'flex';
         summary.style.flexWrap = 'wrap';
         summary.style.gap = '10px';
-        summary.style.fontSize = '11px'; 
+        summary.style.fontSize = '11px';
 
         summary.innerHTML = `
             <span>Tổng: <strong>${fmtNum(total)}</strong></span>
@@ -537,18 +594,7 @@ if (idx !== -1 && idx + 1 < parts.length) {
                 updatedText: updated ? fmtDate(updated) : '',
                 collectedAt: new Date().toISOString(),
                 collections: [],
-                flags: {
-                    poster: false,
-                    managerOwner: false,
-                    managerGuest: false,
-                    editorOwner: false,
-                    editorGuest: false,
-                    private: false,
-                    embedLink: false,
-                    embedFile: false,
-                    duplicate: false,
-                    vip: false
-                }
+                flags: BookHelper.resetFlags()
             };
         } catch (err) {
             console.error('[WorksManager] parseBook', err);
@@ -1017,9 +1063,8 @@ if (idx !== -1 && idx + 1 < parts.length) {
 
         try {
             const parsedUrl = new URL(url);
-const isAllowedHost = ALLOWED_HOSTNAMES.some(ext => parsedUrl.hostname.endsWith(ext));
-if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
-    throw new Error('URL không hợp lệ.');
+            if (!ALLOWED_HOSTNAMES.includes(parsedUrl.hostname) || !parsedUrl.pathname.startsWith('/truyen/')) {
+                throw new Error('URL không hợp lệ.');
             }
             updateOverlay({ text: 'Đang tải và xử lý truyện...', progress: 50, meta: '' });
             const response = await fetch(parsedUrl.href);
@@ -1032,8 +1077,10 @@ if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
             if (!currentUserSlug) throw new Error('Không xác định được người dùng.');
 
             state.key = `works:${currentUserSlug}:works:v${STORE_VERSION}`;
+            localforage.config(STORE_CFG);
             await localforage.ready();
             await loadCache();
+            if (!state.username) state.username = currentUserSlug;
 
             const book = await parseBookFromPage(doc, bookId, parsedUrl.href, state.cache ? state.cache.username : currentUserSlug);
             if (!book) throw new Error('Không thể phân tích thông tin truyện.');
@@ -1041,11 +1088,9 @@ if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
             if (!userHasRole) throw new Error(`Bạn không có vai trò quản lý nào cho truyện này.`);
 
             if (!state.cache) {
-                state.cache = { books: {}, bookIds: [], version: STORE_VERSION, username: currentUserSlug, mode: 'works' };
+state.cache = BookHelper.initEmptyCache(currentUserSlug, 'works');
             }
-            if (!state.cache.books[book.id]) {
-                state.cache.bookIds.unshift(book.id);
-            }
+await BookHelper.upsertBook(book.id, book);
             state.cache.books[book.id] = book;
             await saveCache(state.cache);
             notify(TEXT.manualAdded);
@@ -1299,7 +1344,7 @@ if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
 
     // 2. Lấy tất cả các checkbox (mỗi checkbox đại diện cho 1 truyện trong kết quả lọc)
     const allItems = Array.from(shadow.querySelectorAll('.result-item-checkbox'));
-    
+
     // 3. Lấy URL của N truyện đầu tiên
     const urls = allItems.slice(0, count).map(cb => cb.dataset.url);
 
@@ -1440,14 +1485,9 @@ if (!isAllowedHost || !parsedUrl.pathname.startsWith('/truyen/')) {
                 if (mode === 'full') {
                     targetIds = [...aggregated.bookIds];
                 } else if (mode === 'complete') {
-                    targetIds = aggregated.bookIds.filter(id => {
-                        const b = aggregated.books[id];
-                        const s = b.stats || {};
-                        const missingInfo = !b.summary || !b.tags || b.tags.length <= 1;
-                        const allStatsZero = (s.rating || 0) === 0 && (s.comments || 0) === 0 && (s.thanks || 0) === 0;
-                        // Điều kiện: Thiếu tags/tóm tắt HOẶC cả 3 stat đều bằng 0
-                        return missingInfo || allStatsZero;
-                    });
+                    targetIds = aggregated.bookIds.filter(id =>
+                    BookHelper.needsFullScan(aggregated.books[id])
+                );
                 }
 
                 // --- BƯỚC 3: TẢI CHI TIẾT ---
@@ -1632,7 +1672,7 @@ const collectSummaries = async (aggregated, threads, delay, started) => {
 const collectAdditionalMetadata = async (aggregated, started) => {
         // Reset flags và collections
         Object.values(aggregated.books).forEach(book => {
-            book.flags = { poster: false, managerOwner: false, managerGuest: false, editorOwner: false, editorGuest: false, embedLink: false, embedFile: false, duplicate: false };
+            book.flags = BookHelper.resetFlags();
             book.collections = [];
         });
 
@@ -1682,28 +1722,146 @@ const initializeStoryPage = async () => {
     if (!currentUserSlug) return;
     const bookId = window.bookId || document.querySelector('input[name="bookId"]')?.value;
     if (!bookId) return;
-
+state.username = currentUserSlug;
+    state.mode = 'works';
     state.key = `works:${currentUserSlug}:works:v${STORE_VERSION}`;
     localforage.config(STORE_CFG);
     await localforage.ready();
+    ensurePanel();
     await loadCache();
+// Tự động kiểm tra và cập nhật cache
+    try {
+        const currentUrl = window.location.href.split('#')[0];
 
-    if (!state.cache || !state.cache.books || !state.cache.books[bookId]) return;
+        // Khởi tạo cache nếu chưa có
+        if (!state.cache) {
+            state.cache = BookHelper.initEmptyCache(currentUserSlug, 'works');
+        }
 
-    const updatedBook = await parseBookFromPage(document, bookId, window.location.href.split('#')[0], state.cache.username);
+        const existingBook = state.cache.books[bookId];
 
-    if (updatedBook) {
-        state.cache.books[bookId] = updatedBook;
-        await saveCache(state.cache);
-        notify(`Đã cập nhật "${updatedBook.title}" từ trang truyện.`);
-        // Gửi thông báo cập nhật cho các tab khác
-        const channelName = `${BROADCAST_PREFIX}${state.key}`;
-        try {
-            const channel = new BroadcastChannel(channelName);
-            channel.postMessage({ origin: ORIGIN_ID, type: 'update', book: updatedBook });
-            channel.close();
-        } catch(e) {}
+        if (existingBook) {
+            // ===== TRƯỜNG HỢP 1: ĐÃ CÓ TRONG CACHE - CHỈ CẬP NHẬT PHẦN THIẾU =====
+            console.log('[WorksManager] Truyện đã có trong cache, kiểm tra cập nhật...');
+
+            let needsUpdate = false;
+            const updates = {};
+
+            // Luôn cập nhật lượt cảm ơn mới
+            const pThanks = document.querySelector('.cover-info p:has(span)');
+            if (pThanks) {
+                const thanksRaw = pThanks.querySelector('span')?.textContent || pThanks.textContent;
+                const thanksCount = parseInt(thanksRaw.replace(/[^0-9]/g, '')) || 0;
+                if (thanksCount !== existingBook.stats?.thanks) {
+                    updates.stats = { ...existingBook.stats, thanks: thanksCount };
+                    needsUpdate = true;
+                    console.log(`[WorksManager] Cập nhật lượt cảm ơn: ${existingBook.stats?.thanks || 0} → ${thanksCount}`);
+                }
+            }
+
+            // Cập nhật tóm tắt nếu chưa có
+            if (!existingBook.summary) {
+                const summary = parseSummaryFromPage(document);
+                if (summary) {
+                    updates.summary = summary;
+                    needsUpdate = true;
+                    console.log('[WorksManager] Đã thêm tóm tắt còn thiếu');
+                }
+            }
+
+            // Lưu nếu có thay đổi
+            if (needsUpdate) {
+                Object.assign(existingBook, updates);
+                await saveCache(state.cache);
+                notify(`Đã cập nhật "${existingBook.title}".`);
+
+                // Broadcast cho các tab khác
+                try {
+                    const channel = new BroadcastChannel(`${BROADCAST_PREFIX}${state.key}`);
+                    channel.postMessage({
+                        origin: ORIGIN_ID,
+                        type: 'update',
+                        book: existingBook
+                    });
+                    channel.close();
+                } catch(e) {}
+            } else {
+                console.log('[WorksManager] Không có gì cần cập nhật');
+            }
+
+        } else {
+            // ===== TRƯỜNG HỢP 2: CHƯA CÓ TRONG CACHE - THÊM MỚI TOÀN BỘ =====
+            console.log('[WorksManager] Truyện chưa có trong cache, đang thêm mới...');
+
+            // Parse toàn bộ thông tin từ trang
+            const newBook = await parseBookFromPage(
+                document,
+                bookId,
+                currentUrl,
+                state.cache.username || currentUserSlug
+            );
+
+            if (!newBook) throw new Error('Không thể phân tích thông tin truyện.');
+
+            // Kiểm tra quyền quản lý
+            const userHasRole = newBook.flags.poster ||
+                              newBook.flags.managerOwner ||
+                              newBook.flags.managerGuest ||
+                              newBook.flags.editorOwner ||
+                              newBook.flags.editorGuest;
+
+            if (!userHasRole) {
+                setMessage('Bạn không có vai trò quản lý truyện này.');
+                return;
+            }
+
+            // Thêm vào cache
+            await BookHelper.upsertBook(bookId, newBook);
+            notify(`Đã thêm "${newBook.title}" vào cache.`);
+
+            // Broadcast cho các tab khác
+            try {
+                const channel = new BroadcastChannel(`${BROADCAST_PREFIX}${state.key}`);
+                channel.postMessage({
+                    origin: ORIGIN_ID,
+                    type: 'add',
+                    book: newBook
+                });
+                channel.close();
+            } catch(e) {}
+        }
+
+    } catch(err) {
+        console.error('[WorksManager] Auto sync from story page failed:', err);
+        setMessage(`Lỗi tự động đồng bộ: ${err.message}`);
     }
+    updateSummary();
+// Đăng ký menu commands
+    GM_registerMenuCommand('Thêm/cập nhật truyện này', async () => {
+        try {
+            const currentUrl = window.location.href.split('#')[0];
+            const updatedBook = await parseBookFromPage(
+                document,
+                bookId,
+                currentUrl,
+                state.cache ? state.cache.username : currentUserSlug
+            );
+
+            if (!updatedBook) throw new Error('Không thể phân tích thông tin truyện.');
+
+            if (!state.cache) {
+            state.cache = BookHelper.initEmptyCache(currentUserSlug, 'works');
+        }
+            await BookHelper.upsertBook(bookId, updatedBook);
+            notify(TEXT.manualAdded);
+            updateSummary();
+        } catch(err) {
+            console.error('[WorksManager] Manual add from story page failed', err);
+            notify(`Lỗi: ${err.message}`, true);
+        }
+    });
+
+    GM_registerMenuCommand('Lọc works', openFilter);
 };
 
 const initializeWorksPage = async () => {
@@ -1793,12 +1951,10 @@ const initializeWorksPage = async () => {
 };
 
 const bootstrap = async () => {
-const isWorksPage = path.includes('/user/') && path.includes('/works');
-    const isStoryPage = path.startsWith('/truyen/');
-    if (isWorksPage) {
+    const path = window.location.pathname;
+    if (path.includes('/user/') && path.includes('/works')) {
         await initializeWorksPage();
-    } else if (isStoryPage) {
-        await initializeWorksPage();
+    } else if (path.startsWith('/truyen/')) {
         await initializeStoryPage();
     }
 };
