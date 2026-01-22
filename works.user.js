@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Works
 // @namespace    
-// @version      1.7
+// @version      1.8
 // @description  Hỗ trợ kiểm tra update works
 // @author       Minty
 // @match        https://*/user/*/works*
@@ -22,7 +22,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '1.7';
+    const VERSION = '1.8';
     const ALLOWED_HOSTNAMES = ['.net', '.org']
     const FILTER_RESULT_LIMIT = 500;
     const STORE_VERSION = 1;
