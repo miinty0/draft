@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager
 // @namespace    http://tampermonkey.net/
-// @version      8.3
+// @version      10.1
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -18,56 +18,108 @@
     const IS_DETAIL_PAGE = /^\/truyen\/[^/]+$/.test(PATH);
     const CACHE_PREFIX = 'cache_';
     const THEME_KEY = 'wd_theme_mode';
+    const PAGE_SIZE = 501;
+    const MAX_Z_INDEX = 2147483647;
 
     if (!IS_LIST_PAGE && !IS_DETAIL_PAGE) return;
 
-    // --- STYLE & UTILS ---
+    // --- BỎ DẤU ---
+    function removeAccents(str) {
+        if (!str) return "";
+        return str.normalize('NFD')
+                  .replace(/[\u0300-\u036f]/g, '')
+                  .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+                  .toLowerCase();
+    }
+
+    // --- CSS ---
     const commonStyles = `
         :root {
-            --wd-bg: #f9f9f9; --wd-text: #333; --wd-header-bg: #2e7d32;
-            --wd-border: #ccc; --wd-item-bg: #fff; --wd-input-bg: #fff;
-            --wd-input-text: #000; --wd-shadow: rgba(0,0,0,0.1);
-            --wd-scroll-track: #e0e0e0; --wd-scroll-thumb: #888;
+            --wd-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --wd-bg: rgba(255, 255, 255, 0.95);
+            --wd-text: #2c3e50;
+            --wd-accent: #27ae60;
+            --wd-accent-hover: #219150;
+            --wd-danger: #ff4757;
+            --wd-danger-hover: #ff6b81;
+            --wd-border: rgba(0,0,0,0.08);
+            --wd-item-bg: #fff;
+            --wd-input-bg: #f1f2f6;
+            --wd-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            --wd-item-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            --wd-header-bg: #fff;
+            --wd-text-sub: #a4b0be;
+            --wd-scroll: #ced6e0;
+            color-scheme: light;
         }
         [data-wd-theme="dark"] {
-            --wd-bg: #222; --wd-text: #ddd; --wd-header-bg: #1b5e20;
-            --wd-border: #444; --wd-item-bg: #333; --wd-input-bg: #444;
-            --wd-input-text: #fff; --wd-shadow: rgba(0,0,0,0.5);
-            --wd-scroll-track: #2c2c2c; --wd-scroll-thumb: #555;
+            --wd-bg: rgba(33, 33, 33, 0.95);
+            --wd-text: #dfe4ea;
+            --wd-accent: #2ed573;
+            --wd-accent-hover: #7bed9f;
+            --wd-danger: #ff4757;
+            --wd-danger-hover: #ff6b81;
+            --wd-border: rgba(255,255,255,0.1);
+            --wd-item-bg: #2f3542;
+            --wd-input-bg: #57606f;
+            --wd-shadow: 0 8px 30px rgba(0,0,0,0.5);
+            --wd-item-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            --wd-header-bg: #2f3542;
+            --wd-text-sub: #a4b0be;
+            --wd-scroll: #747d8c;
+            color-scheme: dark;
         }
-        #wd-panel * { box-sizing: border-box; }
+        [data-wd-theme="dark"] ::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
-        .wd-btn { cursor: pointer; border: none; border-radius: 4px; font-weight: bold; color: #fff; transition: 0.2s; }
-        .wd-btn:hover { opacity: 0.9; }
-        .wd-btn:disabled { background: #777 !important; cursor: not-allowed; }
+        /* Toast */
         #wd-toast {
-            visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center;
-            border-radius: 4px; padding: 16px; position: fixed; z-index: 9999999; left: 50%; bottom: 30px;
-            transform: translateX(-50%); font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            visibility: hidden; min-width: 200px;
+            background-color: rgba(47, 53, 66, 0.95);
+            backdrop-filter: blur(5px);
+            color: #fff; text-align: center; border-radius: 50px;
+            padding: 10px 24px; position: fixed; z-index: ${MAX_Z_INDEX};
+            left: 50%; bottom: 30px; transform: translateX(-50%) translateY(20px);
+            font-family: var(--wd-font); font-size: 13px; font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            opacity: 0; transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
         }
-        #wd-toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
-        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
-        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        #wd-toast.show { visibility: visible; transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        /* Detail Panel */
+        #wd-chapter-panel {
+            position: fixed; top: 100px; left: 20px; z-index: ${MAX_Z_INDEX};
+            background: var(--wd-bg); color: var(--wd-text);
+            border-left: 4px solid var(--wd-accent);
+            padding: 10px 18px; border-radius: 0 12px 12px 0;
+            box-shadow: var(--wd-shadow);
+            font-family: var(--wd-font); font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            transition: transform 0.2s; cursor: default;
+            backdrop-filter: blur(10px);
+        }
+        #wd-chapter-panel:hover { transform: translateX(5px); }
+        #wd-chapter-panel span.num { color: var(--wd-danger); font-size: 16px; font-weight: 700; }
     `;
     const styleEl = document.createElement("style");
     styleEl.innerText = commonStyles;
     document.head.appendChild(styleEl);
 
+    // --- HELPER FUNCTIONS ---
     const toast = document.createElement('div');
     toast.id = 'wd-toast';
     document.body.appendChild(toast);
-
     function showToast(msg) {
         toast.textContent = msg;
         toast.className = "show";
         setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
     }
-
     function parseNumber(str) {
         if (!str) return 0;
-        return parseInt(str.replace(/\./g, '').replace(/,/g, '').replace(/\D/g, '')) || 0;
+        let s = str.toString().toLowerCase().trim();
+        if (s.includes('k')) return Math.round(parseFloat(s.replace(',', '.')) * 1000);
+        if (s.includes('m')) return Math.round(parseFloat(s.replace(',', '.')) * 1000000);
+        return parseInt(s.replace(/\./g, '').replace(/,/g, '').replace(/\D/g, '')) || 0;
     }
-
     function parseDateToTimestamp(dateStr) {
         if (!dateStr) return 0;
         const parts = dateStr.trim().split('-');
@@ -76,31 +128,87 @@
     }
 
     // --- MODULE 1: DETAIL PAGE ---
-    if (IS_DETAIL_PAGE) {
-        setTimeout(handleDetailPage, 500);
-    }
+    if (IS_DETAIL_PAGE) setTimeout(initDetailLogic, 1000);
 
-    function handleDetailPage() {
-        const data = scrapeDetailData();
-        if (!data) return;
-        const cacheInfo = findInCache(data.link);
-        if (cacheInfo.found) {
-            updateCacheEntry(cacheInfo.key, cacheInfo.index, data, cacheInfo.list);
-            showToast(`✅ Đã cập nhật: "${data.title}"`);
-        } else {
-            renderAddButton(data);
+    function initDetailLogic() {
+        handleDetailPage();
+        const targetNode = document.querySelector('.volume-list');
+        if (targetNode) {
+            new MutationObserver(() => {
+                if (window.wdUpdateTimeout) clearTimeout(window.wdUpdateTimeout);
+                window.wdUpdateTimeout = setTimeout(handleDetailPage, 200);
+            }).observe(targetNode, { attributes: false, childList: true, subtree: true });
         }
     }
 
-    function scrapeDetailData() {
-        const coverInfo = document.querySelector('.cover-info');
-        if (!coverInfo) return null;
+    async function handleDetailPage() {
+        const data = await scrapeDetailData();
+        if (!data) return;
+        if (data.realChapterCount !== null) {
+            showChapterCountPanel(data.realChapterCount, true);
+            data.chapter = data.realChapterCount;
+            const cacheInfo = findInCache(data.link);
+            if (cacheInfo.found) updateCacheEntry(cacheInfo.key, cacheInfo.index, data, cacheInfo.list);
+        } else {
+            showChapterCountPanel(null, false);
+        }
+        const cacheInfo = findInCache(data.link);
+        if (!cacheInfo.found) renderAddButton(data);
+    }
+
+    function calculateRealChapters() {
+        const paginationContainer = document.querySelector('.volume-list .pagination');
+        const validChapterLinks = document.querySelectorAll('.volume-list .chapter-name a[href]');
+        const realCountOnPage = Array.from(validChapterLinks).filter(a => {
+            const href = a.getAttribute('href');
+            return href && href.trim() !== '' && href !== '#';
+        }).length;
+        if (!paginationContainer || paginationContainer.querySelectorAll('li').length <= 1) return realCountOnPage;
+
+        const pageLinks = paginationContainer.querySelectorAll('li a');
+        let maxPage = 1;
+        pageLinks.forEach(a => {
+            const num = parseInt(a.textContent);
+            if (!isNaN(num) && num > maxPage) maxPage = num;
+        });
+        const activeLi = paginationContainer.querySelector('li.active');
+        const activePage = activeLi ? parseInt(activeLi.textContent) : 1;
+        if (activePage === maxPage) return ((maxPage - 1) * PAGE_SIZE) + realCountOnPage;
+        return null;
+    }
+
+    function showChapterCountPanel(count, isExact) {
+        let panel = document.getElementById('wd-chapter-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'wd-chapter-panel';
+            document.body.appendChild(panel);
+        }
+        if (isExact) {
+            panel.innerHTML = `📖 Tổng: <span class="num">${count.toLocaleString()}</span> chương`;
+            panel.style.borderLeftColor = 'var(--wd-accent)';
+        } else {
+            panel.innerHTML = `👉 Bấm sang trang cuối!`;
+            panel.style.borderLeftColor = '#f39c12';
+            panel.style.cursor = 'pointer';
+            panel.onclick = () => {
+                const pagination = document.querySelector('.volume-list .pagination');
+                if(pagination) pagination.scrollIntoView({behavior: "smooth"});
+            };
+        }
+    }
+
+    async function scrapeDetailData() {
         try {
+            const response = await fetch(window.location.href);
+            const text = await response.text();
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            const coverInfo = doc.querySelector('.cover-info');
+            if (!coverInfo) return null;
             const title = coverInfo.querySelector('h2').textContent.trim();
             const stats = coverInfo.querySelectorAll('span[data-ready="abbrNum"]');
             let author = "", status = "", updateDate = "", thanks = 0;
-            const pTags = coverInfo.querySelectorAll('div > p');
-            pTags.forEach(p => {
+            coverInfo.querySelectorAll('div > p').forEach(p => {
                 const txt = p.textContent;
                 if (txt.includes("Tác giả:")) author = p.querySelector('a') ? p.querySelector('a').textContent.trim() : "";
                 if (txt.includes("Tình trạng:")) status = p.querySelector('a') ? p.querySelector('a').textContent.trim() : "";
@@ -119,9 +227,10 @@
                 view: stats[0] ? parseNumber(stats[0].textContent) : 0,
                 rating: stats[1] ? parseNumber(stats[1].textContent) : 0,
                 comment: stats[2] ? parseNumber(stats[2].textContent) : 0,
-                timestamp: parseDateToTimestamp(updateDate)
+                timestamp: parseDateToTimestamp(updateDate),
+                realChapterCount: calculateRealChapters()
             };
-        } catch (e) { console.error(e); return null; }
+        } catch (e) { return null; }
     }
 
     function findInCache(currentLink) {
@@ -141,19 +250,28 @@
 
     function updateCacheEntry(key, index, newData, currentList) {
         const oldItem = currentList[index];
-        currentList[index] = { ...oldItem, ...newData };
+        const finalChapter = newData.realChapterCount !== null ? newData.realChapterCount : oldItem.chapter;
+        currentList[index] = { ...oldItem, ...newData, chapter: finalChapter };
+        delete currentList[index].realChapterCount;
         localStorage.setItem(key, JSON.stringify(currentList));
     }
 
     function renderAddButton(data) {
+        document.querySelectorAll('.wd-add-btn-unique').forEach(b => b.remove());
         const btn = document.createElement('button');
-        btn.innerText = "➕ Thêm Cache";
-        btn.className = "wd-btn";
+        btn.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        `;
+        btn.className = "wd-add-btn-unique";
         Object.assign(btn.style, {
-            position: 'fixed', bottom: '20px', right: '20px',
-            background: '#4CAF50', padding: '8px 12px', fontSize: '13px',
-            zIndex: '999999', boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+            position: 'fixed', bottom: '30px', right: '30px',
+            background: 'var(--wd-accent)', color: '#fff', width: '56px', height: '56px',
+            borderRadius: '50%', border: 'none', cursor: 'pointer',
+            zIndex: MAX_Z_INDEX, boxShadow: '0 4px 15px rgba(39, 174, 96, 0.4)', transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
         });
+        btn.onmouseover = () => btn.style.transform = "scale(1.1) rotate(90deg)";
+        btn.onmouseout = () => btn.style.transform = "scale(1) rotate(0deg)";
         btn.onclick = function() {
             let firstKey = null;
             for (let i = 0; i < localStorage.length; i++) {
@@ -161,166 +279,219 @@
             }
             if (firstKey) {
                 const list = JSON.parse(localStorage.getItem(firstKey));
-                list.unshift({ ...data, chapter: -1 });
+                const chap = data.realChapterCount !== null ? data.realChapterCount : -1;
+                list.unshift({ ...data, chapter: chap });
                 localStorage.setItem(firstKey, JSON.stringify(list));
-                showToast(`🆕 Đã thêm: "${data.title}"`);
-                btn.style.display = 'none';
-            } else { showToast("⚠️ Không tìm thấy Cache nào."); }
+                showToast(`✅ Đã thêm truyện`);
+                btn.style.opacity = '0';
+                setTimeout(()=> btn.style.display = 'none', 300);
+            } else { showToast("⚠️ Không tìm thấy list."); }
         };
         document.body.appendChild(btn);
     }
 
-    // --- MODULE 2: LIST PAGE (PANEL) ---
-    if (IS_LIST_PAGE) {
-        initListPage();
-    }
+    // --- MODULE 2: LIST PAGE ---
+    if (IS_LIST_PAGE) initListPage();
 
     function initListPage() {
         const USER_ID = PATH.split('/')[2];
         const STORAGE_KEY = `${CACHE_PREFIX}${USER_ID}`;
 
-        // CSS
         const panelStyles = `
             #wd-panel {
-                position: fixed; top: 50px; right: 10px; width: 320px;
+                position: fixed; top: 10vh; right: 20px; width: 320px;
                 background: var(--wd-bg); color: var(--wd-text);
-                border: 1px solid var(--wd-border); box-shadow: 0 4px 15px var(--wd-shadow);
-                z-index: 9999; font-family: sans-serif; font-size: 13px;
-                border-radius: 8px; display: flex; flex-direction: column; max-height: 85vh;
-                transition: background 0.3s, color 0.3s; overflow: hidden;
+                border-radius: 16px; z-index: ${MAX_Z_INDEX};
+                font-family: var(--wd-font); font-size: 13px;
+                display: flex; flex-direction: column;
+                max-height: 85vh; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+                overflow: hidden; border: 1px solid var(--wd-border);
+                box-shadow: var(--wd-shadow);
+                backdrop-filter: blur(10px);
             }
+            #wd-panel.wd-minimized {
+                width: auto !important; height: 50px !important; min-width: 160px;
+                border-radius: 25px; top: auto !important; bottom: 30px; right: 30px;
+                cursor: pointer; background: var(--wd-accent) !important;
+                padding: 0 20px; display: flex; align-items: center; justify-content: center;
+                border: 2px solid rgba(255,255,255,0.2);
+                box-shadow: 0 4px 15px rgba(39, 174, 96, 0.5);
+            }
+            #wd-panel.wd-minimized > * { display: none !important; }
+            #wd-panel.wd-minimized::after {
+                content: "🗃️ Tool Manager"; color: #fff; font-weight: 700; font-size: 14px;
+                white-space: nowrap; letter-spacing: 0.5px;
+            }
+            #wd-panel.wd-minimized:hover { transform: translateY(-5px); }
+
             #wd-header {
-                padding: 8px 10px; background: var(--wd-header-bg); color: #fff; cursor: move;
-                font-weight: bold; display: flex; justify-content: space-between; align-items: center;
-                font-size: 12px; flex-shrink: 0;
+                padding: 12px 16px; background: transparent; border-bottom: 1px solid var(--wd-border);
+                display: flex; justify-content: space-between; align-items: center; user-select: none; flex-shrink: 0;
             }
+            .wd-title-text { font-weight: 800; font-size: 14px; color: var(--wd-accent); letter-spacing: 0.5px; }
+            .wd-actions { display: flex; gap: 8px; }
+            .wd-icon-btn {
+                background: transparent; border: none; cursor: pointer; font-size: 16px;
+                width: 28px; height: 28px; border-radius: 6px; color: var(--wd-text-sub); transition: 0.2s;
+                display: flex; align-items: center; justify-content: center;
+            }
+            .wd-icon-btn:hover { background: rgba(0,0,0,0.05); color: var(--wd-text); }
+            .wd-icon-btn.danger:hover { color: var(--wd-danger); background: rgba(231, 76, 60, 0.1); }
+
             #wd-body {
-                padding: 8px; overflow-y: auto; overflow-x: hidden; flex-grow: 1; display: block;
-                scrollbar-width: thin; scrollbar-color: var(--wd-scroll-thumb) var(--wd-scroll-track);
+                padding: 12px; overflow-y: auto; overflow-x: hidden; flex-grow: 1;
+                scrollbar-width: thin; scrollbar-color: var(--wd-scroll) transparent;
             }
-            #wd-body::-webkit-scrollbar { width: 6px; }
-            #wd-body::-webkit-scrollbar-track { background: var(--wd-scroll-track); }
-            #wd-body::-webkit-scrollbar-thumb { background: var(--wd-scroll-thumb); border-radius: 3px; }
-            .wd-section-title {
-                font-weight: bold; color: #4CAF50; margin-bottom: 4px; margin-top: 6px;
-                display:block; font-size: 11px; text-transform: uppercase;
+            #wd-body::-webkit-scrollbar { width: 5px; }
+            #wd-body::-webkit-scrollbar-thumb { background: var(--wd-scroll); border-radius: 10px; }
+
+            .wd-input, .wd-select {
+                width: 100%; border: 1px solid transparent; background: var(--wd-input-bg); color: var(--wd-text);
+                padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none; transition: 0.2s;
+                height: 36px; margin-bottom: 0; box-sizing: border-box;
             }
-            .wd-input, select.wd-select, input[type="date"].wd-date {
-                display: block !important; visibility: visible !important; opacity: 1 !important;
-                padding: 4px !important; border: 1px solid var(--wd-border) !important; border-radius: 4px !important;
-                width: 100% !important; margin-bottom: 5px !important;
-                background-color: var(--wd-input-bg) !important; color: var(--wd-input-text) !important;
-                height: 28px !important; font-size: 12px !important; box-sizing: border-box !important;
+            .wd-input:focus, .wd-select:focus { background: var(--wd-bg); border-color: var(--wd-accent); box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.1); }
+
+            .wd-row { display: flex; gap: 8px; margin-bottom: 10px; }
+            .wd-col { flex: 1; }
+
+            .wd-btn {
+                width: 100%; padding: 8px 0; border: none; border-radius: 8px;
+                font-weight: 700; color: #fff; cursor: pointer; font-size: 11px; text-transform: uppercase;
+                background: var(--wd-accent); transition: 0.2s; letter-spacing: 0.5px;
             }
-            #wd-sort { background-color: var(--wd-input-bg) !important; font-weight: bold; }
-            .wd-row { display: flex; gap: 5px; align-items: center; width: 100%; }
-            .wd-col { flex: 1; min-width: 0; }
+            .wd-btn:hover { background: var(--wd-accent-hover); box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3); transform: translateY(-1px); }
+            .wd-btn:active { transform: translateY(1px); }
+            .wd-btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
+
+            .wd-btn.danger { background: var(--wd-danger); }
+            .wd-btn.danger:hover { background: var(--wd-danger-hover); box-shadow: 0 4px 10px rgba(231, 76, 60, 0.3); }
+
+            #wd-result-list { margin-top: 10px; }
             .wd-list-item {
-                background: var(--wd-item-bg); border: 1px solid var(--wd-border);
-                padding: 8px; margin-bottom: 6px; border-radius: 4px;
-                box-shadow: 0 1px 2px var(--wd-shadow); overflow: hidden;
+                background: var(--wd-item-bg); padding: 12px; margin-bottom: 8px;
+                border-radius: 10px; box-shadow: var(--wd-item-shadow);
+                transition: all 0.2s; border: 1px solid var(--wd-border);
+                position: relative; overflow: hidden;
             }
+            .wd-list-item:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.08); border-color: rgba(39, 174, 96, 0.3); }
             .wd-item-title {
-                font-weight: bold; color: var(--wd-text); font-size: 13px; text-decoration: none;
-                display: block; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                display: block; font-weight: 700; font-size: 13px; color: var(--wd-text);
+                text-decoration: none; margin-bottom: 6px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 25px;
             }
-            .wd-item-info { font-size: 10px; color: #888; margin-bottom: 4px; }
-            .wd-badges { display: flex; gap: 3px; flex-wrap: wrap;}
-            .wd-badge { padding: 2px 4px; border-radius: 3px; font-size: 10px; color: #fff; font-weight: bold; }
-            .bg-view { background-color: #0288D1; } .bg-rate { background-color: #F57C00; }
-            .bg-comment { background-color: #7B1FA2; } .bg-thanks { background-color: #E91E63; }
-            .wd-minimized #wd-body { display: none; }
-            .wd-minimized { width: auto !important; height: auto !important; }
-            .wd-actions { display: flex; align-items: center; gap: 10px; }
-            #wd-theme-toggle { cursor: pointer; background: none; border: none; font-size: 14px; padding: 0; line-height: 1; }
+            .wd-item-title:hover { color: var(--wd-accent); }
+            .wd-item-meta { font-size: 11px; color: var(--wd-text-sub); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
+            .wd-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+            .wd-badge {
+                padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600;
+                background: var(--wd-input-bg); color: var(--wd-text-sub);
+                display: flex; align-items: center; gap: 3px;
+            }
+            .wd-badge.highlight { color: var(--wd-accent); background: rgba(39, 174, 96, 0.08); }
+
+            /* --- DELETE BUTTON --- */
+            .wd-delete-item {
+                position: absolute;
+                top: 8px; right: 8px;
+                width: 26px; height: 26px;
+                border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                background: transparent;
+                color: var(--wd-text-sub);
+                font-size: 14px;
+                border: none;
+                cursor: pointer;
+                z-index: 10;
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                opacity: 0;
+            }
+            .wd-list-item:hover .wd-delete-item {opacity: 0.5;}
+
+            .wd-delete-item:hover {background: var(--wd-danger);color: white;}
         `;
         const pStyle = document.createElement("style");
         pStyle.innerText = panelStyles;
         document.head.appendChild(pStyle);
 
-        // HTML
         const panelHTML = `
             <div id="wd-header">
-                <span>List của (${USER_ID})</span>
+                <span class="wd-title-text">🗃️ TOOL MANAGER</span>
                 <div class="wd-actions">
-                    <button id="wd-theme-toggle" title="Sáng/Tối">☀️</button>
-                    <button id="wd-toggle-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:14px;">➖</button>
+                    <button id="wd-theme-toggle" class="wd-icon-btn" title="Giao diện">☀️</button>
+                    <button id="wd-minimize-btn" class="wd-icon-btn" title="Thu nhỏ">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
                 </div>
             </div>
             <div id="wd-body">
-                <button id="wd-sync-btn" class="wd-btn" style="background: #1976D2; width:100%; padding:6px; font-size: 12px;">🔄 ĐỒNG BỘ</button>
-                <div id="wd-status-msg" style="text-align:center; font-size:11px; color:#888; margin: 4px 0;">Chưa có dữ liệu.</div>
-                <hr style="border:0; border-top:1px solid var(--wd-border); margin: 5px 0;">
-                <input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tên truyện...">
-                <select id="wd-filter-status" class="wd-select browser-default">
-                    <option value="all">-- Trạng thái --</option>
-                    <option value="Còn tiếp">Còn tiếp</option>
-                    <option value="Hoàn thành">Hoàn thành</option>
-                    <option value="Tạm ngưng">Tạm ngưng</option>
-                </select>
                 <div class="wd-row">
-                    <div class="wd-col"><input type="date" id="wd-date-from" class="wd-date browser-default" title="Từ ngày"></div>
-                    <div class="wd-col"><input type="date" id="wd-date-to" class="wd-date browser-default" title="Đến ngày"></div>
+                    <button id="wd-sync-btn" class="wd-btn" style="flex-grow:1;">🔄 ĐỒNG BỘ</button>
+                    <button id="wd-clear-all-btn" class="wd-btn danger" style="width: 44px;" title="Xoá sạch">🗑️</button>
                 </div>
-                <div class="wd-row" style="margin-top: 5px;">
-                     <div class="wd-col">
+
+                <div id="wd-status-msg" style="text-align:center;font-size:11px;color:var(--wd-text-sub);margin-bottom:8px;font-style:italic;">Sẵn sàng.</div>
+
+                <input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tìm tên truyện..." >
+
+                <div class="wd-row">
+                    <div class="wd-col">
+                        <select id="wd-filter-status" class="wd-select browser-default">
+                            <option value="all">Tất cả</option>
+                            <option value="Còn tiếp">Còn tiếp</option>
+                            <option value="Hoàn thành">Hoàn thành</option>
+                            <option value="Tạm ngưng">Tạm ngưng</option>
+                        </select>
+                    </div>
+                    <div class="wd-col">
                         <select id="wd-sort" class="wd-select browser-default">
-                            <option value="newest">📅 Cập nhật</option>
-                            <option value="view">👁️ View</option>
-                            <option value="rating">⭐ Rating</option>
-                            <option value="comment">💬 Comment</option>
+                            <option value="newest">📅 Mới nhất</option>
+                            <option value="view">👁️ Lượt xem</option>
+                            <option value="rating">⭐ Đánh giá</option>
+                            <option value="comment">💬 Bình luận</option>
                             <option value="thanks">🩷 Cảm ơn</option>
                         </select>
-                     </div>
+                    </div>
                 </div>
-                <hr style="border:0; border-top:1px solid var(--wd-border); margin: 8px 0;">
+                <div class="wd-row" style="margin-bottom:0;">
+                    <input type="date" id="wd-date-from" class="wd-input" style="margin:0" title="Từ ngày">
+                    <input type="date" id="wd-date-to" class="wd-input" style="margin:0" title="Đến ngày">
+                </div>
                 <div id="wd-result-list"></div>
             </div>
         `;
+
         const panel = document.createElement('div');
         panel.id = 'wd-panel';
         panel.innerHTML = panelHTML;
         document.body.appendChild(panel);
 
-        // --- THEME LOGIC ---
         const themeBtn = document.getElementById('wd-theme-toggle');
+        const minBtn = document.getElementById('wd-minimize-btn');
+        const clearAllBtn = document.getElementById('wd-clear-all-btn');
+
+        clearAllBtn.onclick = () => {
+            if(confirm("❗CẢNH BÁO❗\nBạn có chắc chắn muốn xoá toàn bộ dữ liệu đã lưu không? Hành động này không thể hoàn tác.")) {
+                localStorage.removeItem(STORAGE_KEY);
+                renderList();
+                showToast("🗑️ Đã xoá toàn bộ dữ liệu.");
+            }
+        };
+
+        let currentTheme = localStorage.getItem(THEME_KEY) === 'dark';
         function applyTheme(isDark) {
             if (isDark) { panel.setAttribute('data-wd-theme', 'dark'); themeBtn.textContent = '🌙'; }
             else { panel.removeAttribute('data-wd-theme'); themeBtn.textContent = '☀️'; }
         }
-        let currentTheme = localStorage.getItem(THEME_KEY) === 'dark';
         applyTheme(currentTheme);
-        themeBtn.addEventListener('click', () => {
+        themeBtn.onclick = () => {
             currentTheme = !currentTheme;
             localStorage.setItem(THEME_KEY, currentTheme ? 'dark' : 'light');
             applyTheme(currentTheme);
-        });
+        };
 
-        // --- DRAG LOGIC ---
-        const header = document.getElementById('wd-header');
-        let isDragging = false, offsetX, offsetY;
-        header.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop;
-            header.style.cursor = 'grabbing';
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) { panel.style.left = `${e.clientX - offsetX}px`; panel.style.top = `${e.clientY - offsetY}px`; }
-        });
-        document.addEventListener('mouseup', () => { isDragging = false; header.style.cursor = 'move'; });
-        document.getElementById('wd-toggle-btn').addEventListener('click', () => panel.classList.toggle('wd-minimized'));
-
-        // --- REAL-TIME LISTENER ---
-        window.addEventListener('storage', (e) => {
-            if (e.key === STORAGE_KEY) {
-                renderList();
-                header.style.backgroundColor = '#43a047';
-                setTimeout(() => {
-                    const isDark = panel.getAttribute('data-wd-theme') === 'dark';
-                    header.style.backgroundColor = isDark ? '#1b5e20' : '#2e7d32';
-                }, 500);
-            }
-        });
+        minBtn.onclick = (e) => { e.stopPropagation(); panel.classList.add('wd-minimized'); };
+        panel.onclick = (e) => { if (panel.classList.contains('wd-minimized')) panel.classList.remove('wd-minimized'); };
 
         function extractListBookData(el) {
             try {
@@ -355,19 +526,16 @@
         async function syncData() {
             const btn = document.getElementById('wd-sync-btn');
             const statusMsg = document.getElementById('wd-status-msg');
-            btn.disabled = true;
+            btn.disabled = true; btn.innerText = "⏳...";
             let allBooks = [];
             let page = 1; let hasNext = true; let start = 0; const limit = 10;
             const baseUrl = `${window.location.origin}/user/${USER_ID}/works`;
-            statusMsg.innerText = "⏳ ...";
             const oldCacheRaw = localStorage.getItem(STORAGE_KEY);
             let oldCacheMap = {};
-            if(oldCacheRaw) {
-                const oldList = JSON.parse(oldCacheRaw);
-                oldList.forEach(b => oldCacheMap[b.link] = b);
-            }
+            if(oldCacheRaw) JSON.parse(oldCacheRaw).forEach(b => oldCacheMap[b.link] = b);
+
             while (hasNext) {
-                statusMsg.innerText = `P:${page} (${allBooks.length})`;
+                statusMsg.innerText = `Đang tải trang ${page}... (Đã lấy ${allBooks.length} truyện)`;
                 try {
                     const response = await fetch(`${baseUrl}?start=${start}`);
                     const text = await response.text();
@@ -377,7 +545,10 @@
                     bookEls.forEach(el => {
                         const newBook = extractListBookData(el);
                         if (newBook) {
-                            if (oldCacheMap[newBook.link]) newBook.thanks = oldCacheMap[newBook.link].thanks || 0;
+                            if (oldCacheMap[newBook.link]) {
+                                newBook.thanks = oldCacheMap[newBook.link].thanks || 0;
+                                if(oldCacheMap[newBook.link].chapter > 0) newBook.chapter = oldCacheMap[newBook.link].chapter;
+                            }
                             allBooks.push(newBook);
                         }
                     });
@@ -386,8 +557,8 @@
                 } catch (err) { hasNext = false; }
             }
             localStorage.setItem(STORAGE_KEY, JSON.stringify(allBooks));
-            statusMsg.innerText = `✅ ${allBooks.length} truyện.`;
-            btn.disabled = false;
+            statusMsg.innerText = `✅ Hoàn tất: ${allBooks.length} truyện.`;
+            btn.disabled = false; btn.innerText = "🔄 ĐỒNG BỘ";
             renderList();
         }
 
@@ -395,57 +566,80 @@
             const listContainer = document.getElementById('wd-result-list');
             listContainer.innerHTML = '';
             const rawData = localStorage.getItem(STORAGE_KEY);
-            if (!rawData) { listContainer.innerHTML = '<div style="text-align:center;color:#999">Vui lòng bấm Đồng bộ.</div>'; return; }
+            if (!rawData) { listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:var(--wd-text-sub);font-size:12px;">Chưa có dữ liệu. Bấm "Đồng bộ" để lấy truyện.</div>'; return; }
+
             let books = JSON.parse(rawData);
-            const sName = document.getElementById('wd-search').value.toLowerCase();
+
+            const sName = removeAccents(document.getElementById('wd-search').value);
             const sStatus = document.getElementById('wd-filter-status').value;
             const dateFrom = parseDateToTimestamp(document.getElementById('wd-date-from').value.split('-').reverse().join('-'));
             const dateTo = parseDateToTimestamp(document.getElementById('wd-date-to').value.split('-').reverse().join('-'));
+
             books = books.filter(b => {
-                const matchName = b.title.toLowerCase().includes(sName);
+                const matchName = removeAccents(b.title).includes(sName);
                 const matchStatus = sStatus === 'all' || b.status === sStatus;
                 let matchDate = true;
                 if (document.getElementById('wd-date-from').value && b.timestamp < dateFrom) matchDate = false;
                 if (document.getElementById('wd-date-to').value && b.timestamp > dateTo) matchDate = false;
                 return matchName && matchStatus && matchDate;
             });
+
             const sortType = document.getElementById('wd-sort').value;
             books.sort((a, b) => {
-                const chapA = a.chapter === -1 ? 0 : a.chapter;
-                const chapB = b.chapter === -1 ? 0 : b.chapter;
-                if (sortType === 'view') return b.view - a.view;
-                if (sortType === 'rating') return b.rating - a.rating;
-                if (sortType === 'comment') return b.comment - a.comment;
-                if (sortType === 'thanks') return (b.thanks || 0) - (a.thanks || 0);
-                if (sortType === 'newest') return b.timestamp - a.timestamp;
-                return 0;
+                const getVal = (item, key) => (key === 'newest' ? item.timestamp : item[key] || 0);
+                return getVal(b, sortType) - getVal(a, sortType);
             });
+
             const statusMsg = document.getElementById('wd-status-msg');
-            if(!statusMsg.innerText.includes("...")) statusMsg.innerText = `Hiển thị: ${books.length}`;
+            if(!statusMsg.innerText.includes("...")) statusMsg.innerText = `Hiển thị: ${books.length} truyện`;
+
             books.forEach(b => {
-                const chapterDisplay = (b.chapter === -1) ? "-" : `${b.chapter}c`;
+                const chapterDisplay = (b.chapter === -1 || b.chapter === 0) ? "N/A" : `${b.chapter.toLocaleString()} chương`;
                 const div = document.createElement('div');
                 div.className = 'wd-list-item';
                 div.innerHTML = `
+                    <button class="wd-delete-item" title="Xoá truyện này">
+                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
                     <a href="${b.link}" target="_blank" class="wd-item-title">${b.title}</a>
-                    <div class="wd-item-info">${b.status} • ${chapterDisplay} • ${b.updateDate}</div>
+                    <div class="wd-item-meta">
+                        <span>${b.status} • ${chapterDisplay}</span>
+                        <span>${b.updateDate}</span>
+                    </div>
                     <div class="wd-badges">
-                        <span class="wd-badge bg-view">👁 ${b.view.toLocaleString()}</span>
-                        <span class="wd-badge bg-rate">★ ${b.rating}</span>
-                        <span class="wd-badge bg-comment">🗩 ${b.comment}</span>
-                        ${b.thanks ? `<span class="wd-badge bg-thanks">♥ ${b.thanks}</span>` : ''}
+                        <span class="wd-badge highlight">👀 ${b.view > 1000 ? (b.view/1000).toFixed(1)+'k' : b.view}</span>
+                        <span class="wd-badge highlight">🌟 ${b.rating}</span>
+                        <span class="wd-badge highlight">💬 ${b.comment}</span>
+                        ${b.thanks ? `<span class="wd-badge highlight">💗 ${b.thanks}</span>` : ''}
                     </div>
                 `;
+
+                const delBtn = div.querySelector('.wd-delete-item');
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if(confirm(`Xoá "${b.title}" khỏi danh sách?`)) {
+                        const currentList = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+                        const newList = currentList.filter(item => item.link !== b.link);
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(newList));
+                        renderList();
+                        showToast('Đã xoá 1 truyện.');
+                    }
+                };
+
                 listContainer.appendChild(div);
             });
         }
 
         document.getElementById('wd-sync-btn').addEventListener('click', syncData);
-        document.getElementById('wd-search').addEventListener('input', renderList);
-        document.getElementById('wd-filter-status').addEventListener('change', renderList);
-        document.getElementById('wd-date-from').addEventListener('change', renderList);
-        document.getElementById('wd-date-to').addEventListener('change', renderList);
-        document.getElementById('wd-sort').addEventListener('change', renderList);
+        ['wd-search', 'wd-filter-status', 'wd-date-from', 'wd-date-to', 'wd-sort'].forEach(id => {
+            document.getElementById(id).addEventListener(id === 'wd-search' ? 'input' : 'change', renderList);
+        });
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === STORAGE_KEY) {
+                renderList();
+            }
+        });
 
         if (localStorage.getItem(STORAGE_KEY)) renderList();
     }
