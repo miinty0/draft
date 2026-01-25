@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager 
 // @namespace    http://tampermonkey.net/
-// @version      10.3
+// @version      10.5
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -434,8 +434,8 @@
                     </div>
                     <div class="wd-col">
                         <select id="wd-sort" class="wd-select browser-default">
-                            <option value="newest">📅 Mới nhất</option>
-                            <option value="oldest">📅 Cũ nhất</option> 
+                            <option value="newest">🆕 Mới nhất</option>
+                            <option value="oldest">🦖 Cũ nhất</option> 
 							<option value="view">👀 Lượt xem</option>
                             <option value="rating">⭐ Đánh giá</option>
                             <option value="comment">💬 Bình luận</option>
@@ -577,13 +577,11 @@
                     const countOnPage = bookEls.length;
                     start += countOnPage;
                     page++;
-                    // Điều kiện dừng:
                     // 1. Nếu trang trả về ít hơn 10 truyện -> Hết trang.
-                    // 2. Nếu tổng số đã lấy >= Tổng số ghi trên web -> Đủ rồi, dừng luôn (tiết kiệm request).
+                    // 2. Nếu tổng số đã lấy >= Tổng số ghi trên web -> dừng (tiết kiệm request).
                     if (countOnPage < EXPECTED_PER_PAGE) hasNext = false;
                     if (totalTarget > 0 && allBooks.length >= totalTarget) hasNext = false;
-                    // Delay chống chặn (quan trọng)
-                    await new Promise(r => setTimeout(r, 1200));
+                    await new Promise(r => setTimeout(r, 1000));
 
                 } catch (err) {
                     console.error("Lỗi tải trang:", err);
