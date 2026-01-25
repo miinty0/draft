@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager 
 // @namespace    http://tampermonkey.net/
-// @version      10.2
+// @version      10.3
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -509,10 +509,23 @@
         async function syncData() {
             const btn = document.getElementById('wd-sync-btn');
             const statusMsg = document.getElementById('wd-status-msg');
-            btn.disabled = true; btn.innerText = "⏳...";
+            btn.disabled = true;
             let allBooks = [];
-            let page = 1; let hasNext = true; let start = 0; const limit = 10;
+            let page = 1;
+            let start = 0;
+            let hasNext = true;
+            const EXPECTED_PER_PAGE = 10;
             const baseUrl = `${window.location.origin}/user/${USER_ID}/works`;
+            // --- BƯỚC 1: LẤY TỔNG SỐ TRUYỆN ---
+            let totalTarget = 0;
+            try {
+                const countEl = document.querySelector('.book-count');
+                if (countEl) {
+                    const match = countEl.textContent.match(/(\d+)/);
+                    if (match) totalTarget = parseInt(match[1]);
+                }
+            } catch (e) { console.log("Không lấy được tổng số truyện ban đầu"); }
+            // Lấy cache cũ
             const oldCacheRaw = localStorage.getItem(STORAGE_KEY);
             let oldCacheMap = {};
             if(oldCacheRaw) {
@@ -521,31 +534,75 @@
                     if(id) oldCacheMap[id] = b;
                 });
             }
+            // --- BƯỚC 2: VÒNG LẶP TẢI ---
             while (hasNext) {
-                statusMsg.innerText = `Đang tải trang ${page}... (Đã lấy ${allBooks.length} truyện)`;
+                // Cập nhật trạng thái có hiển thị tiến độ / Tổng
+                const progressText = totalTarget > 0 ? `${allBooks.length}/${totalTarget}` : `${allBooks.length}`;
+                statusMsg.innerText = `Đang tải trang ${page}... (${progressText} truyện)`;
+                btn.innerText = `⏳ ${progressText}`;
                 try {
                     const response = await fetch(`${baseUrl}?start=${start}`);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, 'text/html');
+                    // Nếu chưa có totalTarget (do user đứng ở trang khác bấm đồng bộ), lấy từ trang 1 vừa tải
+                    if (totalTarget === 0) {
+                        const countEl = doc.querySelector('.book-count');
+                        if (countEl) {
+                            const match = countEl.textContent.match(/(\d+)/);
+                            if (match) totalTarget = parseInt(match[1]);
+                        }
+                    }
                     const bookEls = doc.querySelectorAll('.book-info');
-                    if (bookEls.length === 0) { hasNext = false; break; }
+                    if (bookEls.length === 0) {
+                        hasNext = false;
+                        break;
+                    }
+                    let addedInThisBatch = 0;
                     bookEls.forEach(el => {
                         const newBook = extractListBookData(el);
                         if (newBook) {
                             const id = getStoryId(newBook.link);
-                            if (id && oldCacheMap[id]) {
-                                newBook.thanks = oldCacheMap[id].thanks || 0;
-                                if(oldCacheMap[id].chapter > 0) newBook.chapter = oldCacheMap[id].chapter;
+                            const isDuplicate = allBooks.some(b => getStoryId(b.link) === id);
+                            if (!isDuplicate) {
+                                if (id && oldCacheMap[id]) {
+                                    newBook.thanks = oldCacheMap[id].thanks || 0;
+                                    if(oldCacheMap[id].chapter > 0) newBook.chapter = oldCacheMap[id].chapter;
+                                }
+                                allBooks.push(newBook);
+                                addedInThisBatch++;
                             }
-                            allBooks.push(newBook);
                         }
                     });
-                    if (bookEls.length < limit) hasNext = false; else { start += limit; page++; }
-                    await new Promise(r => setTimeout(r, 300));
-                } catch (err) { hasNext = false; }
+                    // Logic bước nhảy
+                    const countOnPage = bookEls.length;
+                    start += countOnPage;
+                    page++;
+                    // Điều kiện dừng:
+                    // 1. Nếu trang trả về ít hơn 10 truyện -> Hết trang.
+                    // 2. Nếu tổng số đã lấy >= Tổng số ghi trên web -> Đủ rồi, dừng luôn (tiết kiệm request).
+                    if (countOnPage < EXPECTED_PER_PAGE) hasNext = false;
+                    if (totalTarget > 0 && allBooks.length >= totalTarget) hasNext = false;
+                    // Delay chống chặn (quan trọng)
+                    await new Promise(r => setTimeout(r, 1200));
+
+                } catch (err) {
+                    console.error("Lỗi tải trang:", err);
+                    showToast("❌ Lỗi mạng hoặc bị chặn!");
+                    hasNext = false;
+                }
             }
+            // --- BƯỚC 3: KẾT THÚC & KIỂM TRA ---
             localStorage.setItem(STORAGE_KEY, JSON.stringify(allBooks));
-            statusMsg.innerText = `✅ Hoàn tất: ${allBooks.length} truyện.`;
+            
+            // So sánh kết quả thực tế với con số trên web
+            if (totalTarget > 0 && allBooks.length < totalTarget) {
+                statusMsg.innerHTML = `<span style="color:var(--wd-danger)">⚠️ Thiếu truyện: ${allBooks.length}/${totalTarget}</span>`;
+                showToast(`⚠️ Chỉ lấy được ${allBooks.length}/${totalTarget} truyện!`);
+                alert(`CẢNH BÁO:\nWeb ghi nhận ${totalTarget} truyện nhưng tool chỉ tìm thấy ${allBooks.length}. Bạn có thể bị chặn do quét quá nhanh. Hãy thử lại sau vài phút.`);
+            } else {
+                statusMsg.innerText = `✅ Hoàn tất: ${allBooks.length} truyện.`;
+            }
+
             btn.disabled = false; btn.innerText = "🔄 ĐỒNG BỘ";
             renderList();
         }
