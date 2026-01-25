@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager 
 // @namespace    http://tampermonkey.net/
-// @version      10.5
+// @version      10.7
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -536,7 +536,6 @@
             }
             // --- BƯỚC 2: VÒNG LẶP TẢI ---
             while (hasNext) {
-                // Cập nhật trạng thái có hiển thị tiến độ / Tổng
                 const progressText = totalTarget > 0 ? `${allBooks.length}/${totalTarget}` : `${allBooks.length}`;
                 statusMsg.innerText = `Đang tải trang ${page}... (${progressText} truyện)`;
                 btn.innerText = `⏳ ${progressText}`;
@@ -544,7 +543,7 @@
                     const response = await fetch(`${baseUrl}?start=${start}`);
                     const text = await response.text();
                     const doc = new DOMParser().parseFromString(text, 'text/html');
-                    // Nếu chưa có totalTarget (do user đứng ở trang khác bấm đồng bộ), lấy từ trang 1 vừa tải
+                    // Nếu chưa có totalTarget, lấy từ trang 1 vừa tải
                     if (totalTarget === 0) {
                         const countEl = doc.querySelector('.book-count');
                         if (countEl) {
@@ -606,24 +605,37 @@
         }
         function renderList() {
             const listContainer = document.getElementById('wd-result-list');
+            const scrollParent = document.getElementById('wd-body');
+            
+            // --- LƯU VỊ TRÍ CUỘN ---
+            const currentScrollTop = scrollParent ? scrollParent.scrollTop : 0;
+
             listContainer.innerHTML = '';
+            
             const rawData = localStorage.getItem(STORAGE_KEY);
-            if (!rawData) { listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:var(--wd-text-sub);font-size:12px;">Chưa có dữ liệu. Bấm "Đồng bộ" để lấy truyện.</div>'; return; }
+            if (!rawData) { 
+                listContainer.innerHTML = '<div style="text-align:center;padding:20px;color:var(--wd-text-sub);font-size:12px;">Chưa có dữ liệu. Bấm "Đồng bộ" để lấy truyện.</div>'; 
+                return; 
+            }
+            
             let books = JSON.parse(rawData);
+            
             const sName = removeAccents(document.getElementById('wd-search').value);
             const sStatus = document.getElementById('wd-filter-status').value;
             const dateFrom = parseDateToTimestamp(document.getElementById('wd-date-from').value.split('-').reverse().join('-'));
             const dateTo = parseDateToTimestamp(document.getElementById('wd-date-to').value.split('-').reverse().join('-'));
+
             books = books.filter(b => {
                 const matchName = removeAccents(b.title).includes(sName);
                 const matchStatus = sStatus === 'all' || b.status === sStatus;
+                
                 let matchDate = true;
                 if (document.getElementById('wd-date-from').value && b.timestamp < dateFrom) matchDate = false;
                 if (document.getElementById('wd-date-to').value && b.timestamp > dateTo) matchDate = false;
+
                 return matchName && matchStatus && matchDate;
             });
             const sortType = document.getElementById('wd-sort').value;
-            // --- SORT LOGIC ---
             books.sort((a, b) => {
                 if (sortType === 'oldest') {
                     return (a.timestamp || 0) - (b.timestamp || 0);
@@ -632,7 +644,9 @@
                 return getVal(b, sortType) - getVal(a, sortType);
             });
             const statusMsg = document.getElementById('wd-status-msg');
-            if(!statusMsg.innerText.includes("...")) statusMsg.innerText = `Hiển thị: ${books.length} truyện`;
+            if(statusMsg && !statusMsg.innerText.includes("...")) {
+                 statusMsg.innerText = `Hiển thị: ${books.length} truyện`;
+            }
             books.forEach(b => {
                 const chapterDisplay = (b.chapter === -1 || b.chapter === 0) ? "N/A" : `${b.chapter.toLocaleString()} chương`;
                 const div = document.createElement('div');
@@ -667,6 +681,10 @@
                 };
                 listContainer.appendChild(div);
             });
+            // ---KHÔI PHỤC VỊ TRÍ CUỘN ---
+            if (scrollParent) {
+                scrollParent.scrollTop = currentScrollTop;
+            }
         }
         document.getElementById('wd-sync-btn').addEventListener('click', syncData);
         ['wd-search', 'wd-filter-status', 'wd-date-from', 'wd-date-to', 'wd-sort'].forEach(id => {
