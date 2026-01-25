@@ -7,6 +7,8 @@
 // @match        https://*.net/user/*/works*
 // @match        https://*.net/truyen/*
 // @grant        none
+// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
+// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
 // ==/UserScript==
 (function() {
     'use strict';
