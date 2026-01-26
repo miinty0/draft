@@ -1,30 +1,34 @@
 // ==UserScript==
 // @name         Tool Manager
 // @namespace    http://tampermonkey.net/
-// @version      11
+// @version      13
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
 // @match        https://*.net/truyen/*
 // @grant        none
-// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
-// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
 // @thanks       Script lấy cảm hứng từ script của Nguyên Bảo (https://github.com/BaoBao666888/Novel-Downloader5)
 // ==/UserScript==
+
 (function() {
     'use strict';
     const PATH = window.location.pathname, IS_LIST_PAGE = PATH.includes('/user/') && PATH.includes('/works'), IS_DETAIL_PAGE = /^\/truyen\/[^/]+$/.test(PATH);
-    const CACHE_PREFIX = 'cache_', THEME_KEY = 'wd_theme_mode', PAGE_SIZE = 50, MAX_Z_INDEX = 2147483647;
+    const CACHE_PREFIX = 'cache_', THEME_KEY = 'wd_theme_mode', PAGE_SIZE = 501, MAX_Z_INDEX = 2147483647;
+
     if (!IS_LIST_PAGE && !IS_DETAIL_PAGE) return;
+
     const removeAccents = s => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase() : "";
     const getStoryId = url => { try { return url.split(/[?#]/)[0].split('/').filter(p=>p).pop().split('-').pop(); } catch(e) { return url; } };
     const parseNumber = s => { if(!s) return 0; s=s.toString().toLowerCase().trim(); return s.includes('k') ? Math.round(parseFloat(s)*1e3) : s.includes('m') ? Math.round(parseFloat(s)*1e6) : parseInt(s.replace(/\D/g,''))||0; };
     const parseDateToTimestamp = d => { const p=d?.trim().split('-'); return p?.length===3 ? new Date(p[2],p[1]-1,p[0]).getTime() : 0; };
+
     const styleEl = document.createElement("style");
     styleEl.innerText = `:root{--wd-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--wd-bg:rgba(255,255,255,0.95);--wd-text:#2c3e50;--wd-accent:#27ae60;--wd-accent-hover:#219150;--wd-danger:#ff4757;--wd-danger-hover:#ff6b81;--wd-border:rgba(0,0,0,0.08);--wd-item-bg:#fff;--wd-input-bg:#f1f2f6;--wd-shadow:0 8px 30px rgba(0,0,0,0.12);--wd-item-shadow:0 2px 8px rgba(0,0,0,0.04);--wd-header-bg:#fff;--wd-text-sub:#a4b0be;--wd-scroll:#ced6e0;color-scheme:light}[data-wd-theme="dark"]{--wd-bg:rgba(33,33,33,0.95);--wd-text:#dfe4ea;--wd-accent:#2ed573;--wd-accent-hover:#7bed9f;--wd-danger:#ff4757;--wd-danger-hover:#ff6b81;--wd-border:rgba(255,255,255,0.1);--wd-item-bg:#2f3542;--wd-input-bg:#57606f;--wd-shadow:0 8px 30px rgba(0,0,0,0.5);--wd-item-shadow:0 4px 12px rgba(0,0,0,0.2);--wd-header-bg:#2f3542;--wd-text-sub:#a4b0be;--wd-scroll:#747d8c;color-scheme:dark}[data-wd-theme="dark"] ::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer}#wd-toast{visibility:hidden;min-width:200px;background-color:rgba(47,53,66,0.95);backdrop-filter:blur(5px);color:#fff;text-align:center;border-radius:50px;padding:10px 24px;position:fixed;z-index:${MAX_Z_INDEX};left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);font-family:var(--wd-font);font-size:13px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,0.2);opacity:0;transition:all 0.3s}#wd-toast.show{visibility:visible;transform:translateX(-50%) translateY(0);opacity:1}#wd-chapter-panel{position:fixed;top:100px;left:20px;z-index:${MAX_Z_INDEX};background:var(--wd-bg);color:var(--wd-text);border-left:4px solid var(--wd-accent);padding:10px 18px;border-radius:0 12px 12px 0;box-shadow:var(--wd-shadow);font-family:var(--wd-font);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;transition:transform 0.2s;cursor:default;backdrop-filter:blur(10px)}#wd-chapter-panel:hover{transform:translateX(5px)}#wd-chapter-panel span.num{color:var(--wd-danger);font-size:16px;font-weight:700}`;
     document.head.appendChild(styleEl);
+
     const toast = document.createElement('div'); toast.id = 'wd-toast'; document.body.appendChild(toast);
     const showToast = msg => { toast.textContent = msg; toast.className = "show"; setTimeout(() => toast.classList.remove("show"), 2000); };
+
     if (IS_DETAIL_PAGE) {
         setTimeout(initDetailLogic, 1000);
         function initDetailLogic() {
@@ -43,10 +47,13 @@
             if(!findInCache(data.link).found) renderAddButton(data);
         }
         function calculateRealChapters() {
-            const pg = document.querySelector('.volume-list .pagination'), valid = [...document.querySelectorAll('.volume-list .chapter-name a[href]')].filter(a=>a.getAttribute('href')?.trim()!=='#'&&a.getAttribute('href')).length;
+            const pg = document.querySelector('.volume-list .pagination');
+            const valid = [...document.querySelectorAll('.volume-list .chapter-name a')]
+                .filter(a => a.hasAttribute('href') && a.getAttribute('href').trim() !== '' && a.getAttribute('href') !== '#!').length;
             if (!pg || pg.querySelectorAll('li').length <= 1) return valid;
-            const max = Math.max(...[...pg.querySelectorAll('li a')].map(a=>parseInt(a.textContent)||0), 1), act = parseInt(pg.querySelector('li.active')?.textContent)||1;
-            return act === max ? ((max - 1) * PAGE_SIZE) + valid : null;
+            const max = Math.max(...[...pg.querySelectorAll('li a')].map(a=>parseInt(a.textContent)||0), 1);
+            const act = parseInt(pg.querySelector('li.active')?.textContent)||1;
+            return act === max ? ((max - 1) * 501) + valid : null;
         }
         function showChapterCountPanel(count, isExact) {
             let p = document.getElementById('wd-chapter-panel') || Object.assign(document.createElement('div'), {id:'wd-chapter-panel'});
