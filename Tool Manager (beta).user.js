@@ -6,11 +6,18 @@
 // @author       Minty
 // @match        https://*.net/user/*/works*
 // @match        https://*.net/truyen/*
+// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
+// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
+    const mainScriptUrl = "https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js";
+    if (confirm("Bấm OK để update script!")) {
+        window.location.href = mainScriptUrl;
+    }
+})();
     const PATH = window.location.pathname, IS_LIST_PAGE = PATH.includes('/user/') && PATH.includes('/works'), IS_DETAIL_PAGE = /^\/truyen\/[^/]+$/.test(PATH);
     const CACHE_PREFIX = 'cache_', THEME_KEY = 'wd_theme_mode', PAGE_SIZE = 501, MAX_Z_INDEX = 999999;
 
