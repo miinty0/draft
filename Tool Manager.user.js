@@ -6,10 +6,10 @@
 // @author       Minty
 // @match        https://*.net/user/*/works*
 // @match        https://*.net/truyen/*
+// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
+// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
 // @grant        none
 // @thanks       script này lấy cảm hứng từ script của Bảo (https://github.com/BaoBao666888/Novel-Downloader5)
-// @updateURL    
-// @downloadURL
 // ==/UserScript==
 
 (function() {
