@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Redirect và ảnh bìa
+// @name         Autoredirect + Hỗ trợ 🍅
 // @namespace    http://tampermonkey.net/
-// @version      4.8
-// @description
+// @version      4.9
+// @description  
 // @author       Minty
 // @match        *://*/*
 // @grant        GM_setClipboard
@@ -28,7 +28,7 @@
                 const handleRedirect = () => {
                     if (storyId) {
                         GM_setClipboard(storyId, "text");
-                        hienToast(`Đã copy ID: ${storyId}`);
+                        hienToast(`Đã sao chép ID: ${storyId}`);
                         setTimeout(() => window.location.replace(decodedUrl), 800);
                     } else window.location.replace(decodedUrl);
                 };
@@ -38,6 +38,7 @@
         }
         return;
     }
+
     // --- 2. LOGIC TẢI ẢNH ---
     if (currentUrl.includes('fanqienovel.com/page/')) {
         const checkCount = setInterval(() => {
@@ -60,7 +61,6 @@
         const wrapper = document.createElement('div');
         wrapper.id = 'fq-download-wrap';
 
-        // Nút bấm tải
         const btn = document.createElement('button');
         btn.innerHTML = `<span style="display:flex;align-items:center;gap:5px;">
             <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
@@ -68,7 +68,6 @@
         </span>`;
         btn.style = `padding: 5px 14px; background: #000; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 700; transition: 0.2s;`;
 
-        // Bảng log
         const logBox = document.createElement('div');
         logBox.style = `
             position: fixed; top: 50%; right: 20px; transform: translateY(-50%);
@@ -77,12 +76,11 @@
             box-shadow: 0 20px 50px rgba(0,0,0,0.7); border: 1px solid #222;
             font-family: 'JetBrains Mono', monospace; font-size: 10px;
         `;
+
         const closeBtn = document.createElement('div');
         closeBtn.innerText = 'ĐÓNG ✕';
         closeBtn.style = 'text-align:right; font-size:10px; color:#555; cursor:pointer; margin-bottom:8px; font-family:sans-serif; font-weight:bold;';
         closeBtn.onclick = () => { logBox.style.display = 'none'; };
-        closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; };
-        closeBtn.onmouseout = () => { closeBtn.style.color = '#555'; };
 
         const logContent = document.createElement('div');
         logContent.style = 'max-height: 180px; overflow-y: auto; line-height: 1.6;';
@@ -109,7 +107,6 @@
             const imgEl = document.querySelector('.book-cover-img');
             const titleEl = document.querySelector('.info-name h1');
             if (!imgEl) return ghiLog('LỖI: KO THẤY ẢNH');
-
             const match = imgEl.src.match(/novel-pic\/(.*?)~/);
             if (!match) return ghiLog('LỖI: KO LẤY ĐƯỢC ID');
 
@@ -125,11 +122,11 @@
                 `https://p3-novel-sign.byteimg.com/novel-pic/${imgId}`
             ];
 
-            batDauTai(urls, 0, name, btn, ghiLog, SIZE_LIMIT_KB, TARGET_RATIO, logBox);
+            startProcessing(urls, 0, name, btn, ghiLog, SIZE_LIMIT_KB, TARGET_RATIO, logBox);
         };
     }
 
-    function batDauTai(urls, idx, name, btn, log, limit, ratio, logBox) {
+    function startProcessing(urls, idx, name, btn, log, limit, ratio, logBox) {
         if (idx >= urls.length) {
             log('THẤT BẠI: LỖI MÁY CHỦ');
             btn.disabled = false; btn.style.opacity = '1'; return;
@@ -139,17 +136,34 @@
             method: "GET", url: urls[idx], responseType: "blob", timeout: 10000,
             onload: (res) => {
                 if (res.status === 200 && res.response.size > 2000) {
-                    log(`ĐÃ TẢI GỐC: ${Math.round(res.response.size/1024)}KB`);
-                    xuLyAnh(res.response, name, btn, log, limit, ratio, logBox);
+                    const blob = res.response;
+                    const kbSize = blob.size / 1024;
+                    log(`ĐÃ TẢI XONG: ${Math.round(kbSize)}KB`);
+                    if (kbSize <= limit) {
+                        log('<span style="color:#fff">SIZE ẢNH ĐẠT YÊU CẦU!</span>');
+                        taiAnhTrucTiep(blob, name);
+                        log('<span style="color:#fff">HOÀN TẤT: ĐÃ LƯU BÌA!</span>');
+                        btn.disabled = false; btn.style.opacity = '1';
+                        setTimeout(() => { logBox.style.display = 'none'; }, 8000);
+                    } else {
+                        log('ẢNH QUÁ LỚN. BẮT ĐẦU NÉN...');
+                        xuLyNenAnh(blob, name, btn, log, limit, ratio, logBox);
+                    }
                 } else {
                     log(`MÁY CHỦ ${idx+1} LỖI.`);
-                    batDauTai(urls, idx+1, name, btn, log, limit, ratio, logBox);
+                    startProcessing(urls, idx+1, name, btn, log, limit, ratio, logBox);
                 }
             }
         });
     }
 
-    async function xuLyAnh(blob, name, btn, log, limit, ratio, logBox) {
+    function taiAnhTrucTiep(blob, name) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+    }
+    async function xuLyNenAnh(blob, name, btn, log, limit, ratio, logBox) {
         const originalSize = blob.size;
         const img = new Image();
         img.src = URL.createObjectURL(blob);
@@ -158,19 +172,16 @@
             const ctx = canvas.getContext('2d');
             canvas.width = img.width; canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
-
-            let q = 0.95, cropped = false, result;
+            let q = 0.95, isCropped = false, result;
             while (true) {
                 result = await new Promise(r => canvas.toBlob(r, 'image/jpeg', q));
                 let red = Math.round((1 - (result.size / originalSize)) * 100);
                 log(`NÉN: -${red}% | ${Math.round(result.size/1024)}KB`);
-
                 if (result.size / 1024 <= limit) break;
-
                 if (q > 0.5) q -= 0.1;
-                else if (!cropped) {
+                else if (!isCropped) {
                     log('CẮT 5:7 GIẢM SIZE...');
-                    cropped = true;
+                    isCropped = true;
                     let w = img.width, h = img.height, dw, dh, ox = 0, oy = 0;
                     if (w/h > ratio) { dw = h * ratio; dh = h; ox = (w - dw)/2; }
                     else { dw = w; dh = w / ratio; oy = (h - dh)/2; }
@@ -179,10 +190,10 @@
                 } else if (q > 0.1) q -= 0.1;
                 else { canvas.width *= 0.9; canvas.height *= 0.9; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); }
             }
-            const a = document.createElement('a'); a.href = URL.createObjectURL(result); a.download = name; a.click();
+            taiAnhTrucTiep(result, name);
             log('<span style="color:#fff">HOÀN TẤT: ĐÃ LƯU BÌA!</span>');
             btn.disabled = false; btn.style.opacity = '1';
-            setTimeout(() => { logBox.style.display = 'none'; }, 10000);
+            setTimeout(() => { logBox.style.display = 'none'; }, 8000);
         };
     }
 
