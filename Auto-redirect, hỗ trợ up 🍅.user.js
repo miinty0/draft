@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Auto-redict, hỗ trợ up 🍅
+// @name         Auto-redirect, hỗ trợ up 🍅
 // @namespace    http://tampermonkey.net/
-// @version      5.1
+// @version      5.2
 // @description  Mở tab mới, copy ID truyện, tải ảnh nhanh, nén ảnh xuống 500KB.
 // @author       Minty
 // @match        *://*/truyen/*
