@@ -12,6 +12,8 @@
 // @connect      byteimg.com
 // @connect      wp.com
 // @run-at       document-start
+// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Auto-redirect,%20h%E1%BB%97%20tr%E1%BB%A3%20up%20%F0%9F%8D%85.user.js
+// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Auto-redirect,%20h%E1%BB%97%20tr%E1%BB%A3%20up%20%F0%9F%8D%85.user.js
 // ==/UserScript==
 
 (function() {
