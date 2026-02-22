@@ -5,6 +5,8 @@
 // @version      1.5.0
 // @description  Dịch trang
 // @match        *://*/*
+// @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/D%E1%BB%8Bch%20convert%20trang.user.js
+// @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/D%E1%BB%8Bch%20convert%20trang.user.js
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
