@@ -1,3 +1,16 @@
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script>
+  $(document).ready(function() {
+      $('#novel-list').DataTable({
+          "paging": true,
+          "ordering": true,
+          "info": true,
+          "searching": true
+      });
+  });
+</script>
 | Title | Author | Genre |
 |-------|--------|-------|
 | 19世纪私生女 | 存金 | — |
@@ -1635,3 +1648,4 @@
 | 龙傲天崽成了豪门小团宠 | 蜂蜜麦片 | 原创-纯爱-近代现代-爱情 |
 | 龙傲天的反派道侣 | 泽达 | 原创-纯爱-架空历史-仙侠 |
 | 龙舌兰日出[电竞] | 伏渊 | 原创-言情-近代现代-爱情 |
+{: #novel-list .display }
