@@ -1,13 +1,105 @@
+<style>
+  /* Modern Container and Typography */
+  body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      line-height: 1.6;
+  }
+
+  /* Modern Table Styling */
+  #novel-list_wrapper {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      margin-top: 20px;
+  }
+  table.dataTable {
+      border-collapse: collapse !important;
+      width: 100% !important;
+  }
+  table.dataTable thead th {
+      background-color: #f1f5f9;
+      color: #475569;
+      font-weight: 600;
+      border-bottom: 2px solid #e2e8f0 !important;
+      padding: 14px 15px;
+      text-align: left;
+  }
+  table.dataTable tbody td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+  }
+  table.dataTable tbody tr:hover {
+      background-color: #f8fafc !important;
+      transition: background-color 0.2s ease;
+  }
+
+  /* Checkbox & Status Styling */
+  .read-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #3b82f6; /* Modern blue checkbox */
+  }
+  .row-read td {
+      color: #94a3b8;
+      text-decoration: line-through;
+      background-color: #fcfcfc;
+  }
+</style>
+
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script>
   $(document).ready(function() {
-      $('#novel-list').DataTable({
-          "paging": true,
+      // 1. Dynamically add the Checkbox header and cells
+      $('#novel-list thead tr').prepend('<th>Status</th>');
+
+      // Fetch saved checklist states from localStorage
+      const savedState = JSON.parse(localStorage.getItem('novelReadState')) || {};
+
+      $('#novel-list tbody tr').each(function() {
+          // Use the novel Title as the unique ID for localStorage
+          const title = $(this).find('td').eq(0).text().trim();
+          const isChecked = savedState[title] ? 'checked' : '';
+          
+          $(this).prepend(`<td><input type="checkbox" class="read-checkbox" data-title="${title}" ${isChecked}></td>`);
+          
+          if (isChecked) {
+              $(this).addClass('row-read');
+          }
+      });
+
+      // 2. Initialize DataTable
+      const table = $('#novel-list').DataTable({
+          "paging": false,      // Disables pagination, showing the full list on one page
           "ordering": true,
           "info": true,
-          "searching": true
+          "searching": true,
+          "columnDefs": [
+              { "orderable": false, "targets": 0 } // Disables sorting on the checkbox column
+          ]
+      });
+
+      // 3. Handle Checkbox clicks and save to localStorage
+      $('#novel-list').on('change', '.read-checkbox', function() {
+          const title = $(this).data('title');
+          const isRead = $(this).is(':checked');
+          const currentState = JSON.parse(localStorage.getItem('novelReadState')) || {};
+
+          if (isRead) {
+              currentState[title] = true;
+              $(this).closest('tr').addClass('row-read');
+          } else {
+              delete currentState[title];
+              $(this).closest('tr').removeClass('row-read');
+          }
+          
+          localStorage.setItem('novelReadState', JSON.stringify(currentState));
       });
   });
 </script>
