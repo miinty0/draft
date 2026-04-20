@@ -1,3 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>My Reading List</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 30px; background: #f4f7f6; }
+        #content { background: white; padding: 20px; border-radius: 10px; shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #dee2e6; padding: 12px; }
+        th { background: #6f42c1; color: white; }
+        .done { background-color: #f8f9fa; color: #ccc; text-decoration: line-through; }
+        input[type="checkbox"] { transform: scale(1.5); margin-right: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="content">
+        <script type="text/markdown" id="markdown-source">
+
 | Tên truyện | Tác giả | Thể loại | Tag | Tình trạng | Giới thiệu |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 藏月 | 今雾 | 原创-言情-近代现代-爱情 | 情有独钟-天作之合-甜文-成长 | 完结-33.25万字 | 你是不为人知的秘密 |
@@ -725,4 +748,48 @@
 | 欢迎光临██客栈 | 敛长空 | 原创-言情-幻想未来-剧情 | 惊悚-种田文-末世-爽文-经营-基建 | 连载-45.31万字 | 无限游戏里开客栈 |
 | 丧尸？烧了沤肥 | 一碗蛋酒 | 原创-言情-幻想未来-爱情 | 田园-种田文-末世-甜文-轻松-日常 | 完结-51.84万字 | 末世也要种菜啊 |
 | 随身花园[全民求生] | 也迟迟 | 原创-言情-幻想未来-剧情 | 随身空间-种田文-末世-轻松-天选之子-荒野求生 | 连载-45.45万字 | 生存游戏，就这？ |
----------------------------
+
+        </script>
+    </div>
+</div>
+
+<script>
+    // 1. Chuyển Markdown thành HTML
+    const mdSource = document.getElementById('markdown-source').innerText;
+    const htmlContent = marked.parse(mdSource);
+    document.getElementById('content').innerHTML = `<h2>📚 Danh sách truyện của tôi</h2>` + htmlContent;
+
+    // 2. Tự động thêm Checkbox vào từng dòng của bảng
+    const rows = document.querySelectorAll("table tbody tr");
+    rows.forEach((row, index) => {
+        const id = "book-" + index; // Tạo ID định danh dựa trên thứ tự dòng
+        const firstCell = row.cells[0];
+        
+        // Tạo checkbox
+        const chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.style.marginRight = "10px";
+        
+        // Chèn checkbox vào trước nội dung cột đầu tiên
+        firstCell.prepend(chk);
+
+        // Load trạng thái từ LocalStorage
+        if (localStorage.getItem(id) === "done") {
+            chk.checked = true;
+            row.classList.add("done");
+        }
+
+        // Sự kiện lưu khi click
+        chk.addEventListener("change", () => {
+            if (chk.checked) {
+                row.classList.add("done");
+                localStorage.setItem(id, "done");
+            } else {
+                row.classList.remove("done");
+                localStorage.removeItem(id);
+            }
+        });
+    });
+</script>
+</body>
+</html>
