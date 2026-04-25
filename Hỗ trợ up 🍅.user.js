@@ -1,40 +1,42 @@
 // ==UserScript==
-// @name         Hỗ trợ up 🍅
-// @namespace    http://tampermonkey.net/
-// @version      3.0
-// @description  Cuộn ngang, tải ảnh bìa, đánh dấu & quản lý list
+// @name         Hỗ trợ up 🍅 + Score Badge
+// @namespace    https://fanqienovel.com/
+// @version      4.0.0
+// @description  Cuộn ngang, tải ảnh bìa, đánh dấu & quản lý list + Hiển thị badge điểm kế tựa đề
 // @author       Minty
 // @match        https://fanqienovel.com/*
 // @match        *://*/truyen/*
 // @match        *://*/redirect*
 // @match        *://*/page/*
+// @match        https://miinty0.github.io/*
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_addStyle
+// @grant        unsafeWindow
 // @connect      byteimg.com
 // @connect      wp.com
+// @connect      api5-normal-sinfonlinec.fqnovel.com
 // @run-at       document-start
 // @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/H%E1%BB%97%20tr%E1%BB%A3%20up%20%F0%9F%8D%85.user.js
 // @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/H%E1%BB%97%20tr%E1%BB%A3%20up%20%F0%9F%8D%85.user.js
 // ==/UserScript==
-
 (function () {
     'use strict';
 // DOMAIN GUARDS
-    const isFanqie = location.hostname === 'fanqienovel.com';
+    const isFanqie = location.hostname === 'fanqienovel.com' || location.hostname === 'miinty0.github.io';
     const isRedirectPage = location.pathname.includes('/redirect');
     const isTruyenPage = location.pathname.includes('/truyen');
     if (!isFanqie && !isRedirectPage && !isTruyenPage) return;
-
 // CONFIG
     const DEFAULTS = {
-        horizontalScroll : true,// Cuộn ngang khi thu nhỏ cửa sổ
-        autoRedirect     : true,// Tự redirect & copy ID truyện  
-        hdDownloader     : true,// Nút tải ảnh bìa HD              
-        readingTracker   : true,// Đánh dấu & quản lý truyện đã đọc
+        horizontalScroll : true, // Cuộn ngang khi thu nhỏ cửa sổ
+        autoRedirect     : true, // Tự redirect & copy ID truyện
+        hdDownloader     : true, // Nút tải ảnh bìa HD
+        readingTracker   : true, // Đánh dấu & quản lý truyện đã đọc
+        scoreBadge       : true, // Hiển thị badge điểm kế tựa đề
     };
-
     const CONFIG = Object.assign({}, DEFAULTS);
     for (const key of Object.keys(DEFAULTS)) {
         const saved = GM_getValue('cfg_' + key, null);
@@ -44,7 +46,6 @@
         CONFIG[key] = val;
         GM_setValue('cfg_' + key, val);
     }
-
 // SHARED UTILITIES
     const $ = (s, p = document) => p.querySelector(s);
     const mk = (tag, css, props) => {
@@ -55,13 +56,11 @@
     const run = (fn) => document.readyState === 'loading'
         ? document.addEventListener('DOMContentLoaded', fn)
         : fn();
-
     const redirectToast = (msg) => {
         const t = mk('div', 'position:fixed;top:30px;left:50%;transform:translateX(-50%);background:#000;color:#2ecc71;padding:12px 24px;border-radius:8px;z-index:1000000;font-weight:600;', { innerHTML: `<b>✓</b> ${msg}` });
         document.body.append(t);
         setTimeout(() => t.remove(), 2500);
     };
-
     let toastContainer = null;
     function getToastContainer() {
         if (!toastContainer) {
@@ -80,8 +79,16 @@
         requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
         setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, duration);
     }
-
-
+    function fetchAPI(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET', url,
+                headers: { 'Accept': 'application/json' },
+                onload: r => { try { resolve(JSON.parse(r.responseText)); } catch(e) { reject(e); } },
+                onerror: reject,
+            });
+        });
+    }
 // SECTION 1 — HORIZONTAL SCROLL
     if (isFanqie && CONFIG.horizontalScroll) {
         const scrollStyle = document.createElement('style');
@@ -97,12 +104,15 @@
             }
         `;
         document.addEventListener('DOMContentLoaded', () => document.head.appendChild(scrollStyle));
-
         function fixOverflow() {
+            const bodyWidth = document.body.scrollWidth;
             document.querySelectorAll('*').forEach(el => {
                 const computed = window.getComputedStyle(el);
-                if (computed.overflowX === 'hidden' && computed.position !== 'fixed')
-                    el.style.setProperty('overflow-x', 'visible', 'important');
+                if (computed.overflowX !== 'hidden') return;
+                if (computed.position === 'fixed') return;
+                const rect = el.getBoundingClientRect();
+                if (rect.width < bodyWidth * 0.8) return;
+                el.style.setProperty('overflow-x', 'visible', 'important');
             });
             document.documentElement.style.setProperty('overflow-x', 'auto', 'important');
             document.body.style.setProperty('overflow-x', 'auto', 'important');
@@ -114,8 +124,6 @@
             scrollObserver.observe(document.body, { childList: true, subtree: true });
         });
     }
-
-
 // SECTION 2 — AUTO-REDIRECT & COPY ID
     if (CONFIG.autoRedirect && (isRedirectPage || isTruyenPage || isFanqie)) {
         const url = window.location.href;
@@ -142,7 +150,6 @@
             });
         }
     }
-
 // SECTION 3 — COVER IMAGE DOWNLOADER
     if (isFanqie && CONFIG.hdDownloader && location.pathname.startsWith('/page/')) {
         const hdWait = setInterval(() => {
@@ -150,7 +157,6 @@
             if (box && !$('#fq-download-wrap')) { clearInterval(hdWait); initHD(box); }
         }, 500);
     }
-
     function initHD(parent) {
         Object.assign(parent.style, { display: 'flex', gap: '12px', alignItems: 'center' });
         const wrap = mk('div', '', { id: 'fq-download-wrap' });
@@ -168,13 +174,11 @@
         document.body.append(logBox);
         parent.append(wrap);
         wrap.append(btn);
-
         const log = (msg) => {
             logBox.style.display = 'block';
             logContent.append(mk('div', '', { innerHTML: `<span style="opacity:0.3">#</span> ${msg}` }));
             logContent.scrollTop = logContent.scrollHeight;
         };
-
         btn.onclick = async () => {
             const imgEl   = $('.book-cover-img');
             const titleEl = $('.info-name h1');
@@ -198,7 +202,7 @@
                         if (res.status === 200 && res.response.size > 2000) {
                             const blob = res.response, size = blob.size / 1024;
                             log(`XONG: ${Math.round(size)}KB`);
-                            if (size <= 500) hdSave(blob, name, btn, logBox, log);
+                            if (size <= 1000) hdSave(blob, name, btn, logBox, log);
                             else             hdCompress(blob, name, btn, logBox, log);
                         } else dl(idx + 1);
                     }
@@ -207,7 +211,6 @@
             dl(0);
         };
     }
-
     function hdSave(blob, name, btn, box, log) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob); a.download = name; a.click();
@@ -215,7 +218,6 @@
         btn.disabled = false; btn.style.opacity = '1';
         setTimeout(() => box.style.display = 'none', 8000);
     }
-
     async function hdCompress(blob, name, btn, box, log) {
         log('ẢNH LỚN. ĐANG NÉN...');
         const img = new Image(); img.src = URL.createObjectURL(blob);
@@ -226,7 +228,7 @@
             while (true) {
                 res = await new Promise(r => cvs.toBlob(r, 'image/jpeg', q));
                 log(`NÉN: ${Math.round(res.size / 1024)}KB`);
-                if (res.size / 1024 <= 500 || q < 0.1) break;
+                if (res.size / 1024 <= 1000 || q < 0.1) break;
                 if (q > 0.5) q -= 0.1;
                 else if (!cropped) {
                     cropped = true;
@@ -240,7 +242,6 @@
             hdSave(res, name, btn, box, log);
         };
     }
-
 // SECTION 4 — LIST TRACKER (IndexedDB)
     const SVGs = {
         bookmarkUnread: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`,
@@ -250,8 +251,15 @@
     if (isFanqie) {
         const mainStyle = document.createElement('style');
         mainStyle.innerHTML = `
-            .fanqie-read-badge { margin-left:6px; vertical-align:middle; display:inline-flex; cursor:help; }
-            .fanqie-read-badge svg { width:16px; height:16px; fill:#FF6F61; }
+            .fanqie-read-badge-wrap { position:relative; display:inline-block; width:100%; }
+            .fanqie-read-badge-wrap > a { padding-right:22px !important; box-sizing:border-box; }
+            .fanqie-read-badge {
+                position:absolute; top:50%; right:0;
+                transform:translateY(-50%);
+                display:inline-flex; align-items:center;
+                cursor:help;
+            }
+            .fanqie-read-badge svg { width:16px; height:16px; fill:#FF6F61; display:block; }
             .info-name-modern { display:flex !important; align-items:center; gap:12px; flex-wrap:wrap; }
             .fanqie-mark-btn {
                 background-color:transparent; color:#94a3b8; border:1px solid #cbd5e1;
@@ -266,7 +274,6 @@
                 box-shadow:0 4px 10px rgba(255,111,97,0.35);
             }
             .fanqie-mark-btn.is-read:hover { background-color:#FF574A; border-color:#FF574A; transform:scale(1.05); }
-
             #fq-fab-row {
                 position:fixed; bottom:20px; left:20px;
                 display:flex; gap:8px; z-index:99999;
@@ -281,7 +288,6 @@
             .fq-fab:hover { background:#FF574A; transform:translateY(-2px); }
             .fq-fab.fq-fab-settings { background:#334155; }
             .fq-fab.fq-fab-settings:hover { background:#1e293b; }
-
             .fq-panel {
                 display:none; position:fixed; bottom:60px; left:20px;
                 background:#fff; border:1px solid #e2e8f0; padding:15px;
@@ -293,7 +299,6 @@
                 font-weight:bold; font-size:13px; margin-bottom:10px;
             }
             .fq-panel-close { cursor:pointer; color:#ef4444; padding:0 5px; }
-
             #fq-manager-panel textarea {
                 width:100%; height:70px; margin-top:5px; padding:8px;
                 box-sizing:border-box; border:1px solid #cbd5e1;
@@ -310,7 +315,6 @@
             .fq-btn-save { background:#10b981; }
             .fq-btn-copy { background:#3b82f6; }
             .fq-btn-clear { background:#ef4444; }
-
             .fq-setting-row {
                 display:flex; align-items:center; justify-content:space-between;
                 padding:8px 0; border-bottom:1px solid #f1f5f9; font-size:13px;
@@ -335,7 +339,6 @@
                 margin-top:10px; font-size:10px; color:#94a3b8;
                 background:#f8fafc; padding:6px 8px; border-radius:6px;
             }
-
             #fq-toast-container {
                 position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
                 z-index:999999; display:flex; flex-direction:column-reverse;
@@ -355,10 +358,36 @@
             .fq-toast.fq-toast-info    .fq-toast-icon { color:#60a5fa; }
             .fq-toast.fq-toast-warning .fq-toast-icon { color:#fbbf24; }
             .fq-toast-icon { font-size:15px; flex-shrink:0; }
+            /* Score Badge styles */
+            .title:has(.fq-badge-library) {
+                display: flex !important;
+                align-items: center !important;
+                flex-wrap: nowrap !important;
+                gap: 4px;
+            }
+            .fq-badge-library {
+                display: inline-block;
+                flex-shrink: 0;
+                font-size: 10px;
+                font-weight: 700;
+                padding: 1px 5px;
+                border-radius: 4px;
+                margin-right: 0;
+                vertical-align: middle;
+                background: #fff7ed;
+                border: 1px solid #fdba74;
+                color: #c2410c;
+                white-space: nowrap;
+                cursor: default;
+            }
+            .fq-badge-library.fq-loading {
+                color: #bbb;
+                border-color: #e5e7eb;
+                background: #f9fafb;
+            }
         `;
         document.head.appendChild(mainStyle);
     }
-
 // --- IndexedDB ---
     const DB_NAME = 'fanqie_tracker', DB_VERSION = 1, STORE_NAME = 'read_books';
     let dbPromise = null;
@@ -429,7 +458,6 @@
             tx.onerror    = () => rej(tx.error);
         });
     }
-
 // --- BroadcastChannel sync ---
     const channel = new BroadcastChannel('fanqie_sync');
     channel.onmessage = (e) => {
@@ -440,7 +468,6 @@
         }
     };
     function broadcast(payload) { try { channel.postMessage(payload); } catch (_) {} }
-
 // --- Core tracker logic ---
     function extractBookId(str) {
         if (!str) return null;
@@ -493,50 +520,151 @@
         const readIds = new Set(await getAllIds());
         document.querySelectorAll('a[href*="/page/"]').forEach(link => {
             const bookId = extractBookId(link.getAttribute('href'));
+            if (!bookId) return;
             const isImageCover = link.querySelector('img')
                 || link.classList.contains('muye-book-cover')
                 || link.classList.contains('book-cover');
             if (isImageCover) return;
-            const hasBadge = link.nextElementSibling?.classList.contains('fanqie-read-badge');
-            if (bookId && readIds.has(bookId)) {
+            const isSecondaryLink =
+                link.closest('.desc1') ||
+                link.closest('.desc2') ||
+                link.closest('.btn')   ||
+                link.closest('.chapter');
+            if (isSecondaryLink) return;
+
+            const hasBadge = !!link.parentNode.querySelector('.fanqie-read-badge');
+            if (readIds.has(bookId)) {
                 if (!hasBadge) {
+                    let wrap = link.parentNode;
+                    if (!wrap.classList.contains('fanqie-read-badge-wrap')) {
+                        wrap = document.createElement('span');
+                        wrap.className = 'fanqie-read-badge-wrap';
+                        link.parentNode.insertBefore(wrap, link);
+                        wrap.appendChild(link);
+                    }
                     const badge = document.createElement('span');
                     badge.className = 'fanqie-read-badge';
                     badge.innerHTML = SVGs.badgeCheck;
                     badge.title = 'Truyện đã đánh dấu';
-                    link.parentNode.insertBefore(badge, link.nextSibling);
+                    wrap.appendChild(badge);
                 }
-            } else if (bookId && hasBadge) {
-                link.nextElementSibling.remove();
+            } else if (hasBadge) {
+                link.parentNode.querySelector('.fanqie-read-badge')?.remove();
             }
         });
     }
-// SECTION 5 — SETTINGS PANEL + MANAGER UI
-    const FEATURE_LABELS = [
-        { key: 'horizontalScroll', label: 'Cuộn ngang', desc: 'Cuộn ngang khi thu nhỏ cửa sổ' },
-        { key: 'autoRedirect', label: 'Auto-redirect', desc: 'Tự chuyển trang & copy ID' },
-        { key: 'hdDownloader', label: 'Tải ảnh bìa HD', desc: 'Nút tải ảnh bìa' },
-        { key: 'readingTracker', label: 'Đánh dấu truyện', desc: 'Badge & quản lý danh sách' },
-    ];
+// SECTION 5 — SCORE BADGE
+    const API_BOOK = 'https://api5-normal-sinfonlinec.fqnovel.com/reading/user/share/info/v/';
+    async function fetchScore(bookId) {
+        const json = await fetchAPI(`${API_BOOK}?group_id=${bookId}&aid=1967&version_code=513`);
+        const score = json?.data?.book_info?.score ?? null;
+        return score != null ? parseFloat(score).toFixed(1) : null;
+    }    try { unsafeWindow.tmFetchScore = fetchScore; } catch(_) { window.tmFetchScore = fetchScore; }
+    const CARD_SELECTORS = [
+        '.stack-book-item',   // /library
+        '.rank-book-item',    // /rank
+        '.author-book-item',  // /author-page
+        '.search-book-item',  // /search
+        '.book-item',         // fallback chung
+    ].join(', ');
+    const scoreBadgeSeenIds = new Set();
+    let scoreBadgeRetryTimer = null;
 
+    function injectScoreBadges() {
+        if (location.hostname !== 'fanqienovel.com' || !CONFIG.scoreBadge) return;
+        const bookItems = document.querySelectorAll(CARD_SELECTORS);
+        if (!bookItems.length) return 0;
+
+        let injected = 0;
+        bookItems.forEach(root => {
+            const link = Array.from(root.querySelectorAll('a[href*="/page/"]')).find(a =>
+                !a.querySelector('img') &&
+                !a.classList.contains('muye-book-cover') &&
+                !a.classList.contains('book-cover') &&
+                !a.closest('.desc1') &&
+                !a.closest('.desc2') &&
+                !a.closest('.btn')
+            );
+            if (!link) return;
+
+            const m = link.href.match(/\/page\/(\d+)/);
+            if (!m) return;
+            const bookId = m[1];
+
+            const effectiveParent = link.parentElement?.classList.contains('fanqie-read-badge-wrap')
+                ? link.parentElement.parentElement
+                : link.parentElement;
+
+            const titleContainer =
+                link.closest('h2') ||
+                link.closest('[class*="title"]') ||
+                effectiveParent;
+
+            if (!titleContainer) return;
+
+            // Tránh inject trùng — kiểm tra trên titleContainer
+            if (titleContainer.querySelector('.fq-badge-library')) return;
+
+            // Đã seen (fetch đang chạy hoặc xong) → skip để không fetch lại
+            if (scoreBadgeSeenIds.has(bookId)) return;
+            scoreBadgeSeenIds.add(bookId);
+            injected++;
+
+            const badge = document.createElement('span');
+            badge.className = 'fq-badge-library fq-loading';
+            badge.textContent = '⭐…';
+            titleContainer.insertBefore(badge, titleContainer.firstChild);
+
+            fetchScore(bookId)
+                .then(score => {
+                    if (score) { badge.className = 'fq-badge-library'; badge.textContent = '⭐' + score; }
+                    else badge.remove();
+                })
+                .catch(() => badge.remove());
+        });
+
+        return injected;
+    }
+
+    // Gọi injectScoreBadges với retry tự động nếu DOM chưa sẵn sàng
+    // Backoff: 500ms → 1000ms → 1500ms → ... tối đa 3000ms, thử tối đa 8 lần (~14s tổng)
+    function injectScoreBadgesWithRetry(attempts = 8, delay = 500) {
+        clearTimeout(scoreBadgeRetryTimer);
+        const result = injectScoreBadges();
+        if (result === 0 && attempts > 1) {
+            scoreBadgeRetryTimer = setTimeout(
+                () => injectScoreBadgesWithRetry(attempts - 1, Math.min(delay + 500, 3000)),
+                delay
+            );
+        }
+    }
+
+    // Reset state khi chuyển trang SPA → badge inject lại đúng cho trang mới
+    function resetScoreBadgeState() {
+        scoreBadgeSeenIds.clear();
+        clearTimeout(scoreBadgeRetryTimer);
+    }
+// SECTION 6 — SETTINGS PANEL + MANAGER UI
+    const FEATURE_LABELS = [
+        { key: 'horizontalScroll', label: 'Cuộn ngang',      desc: 'Cuộn ngang khi thu nhỏ cửa sổ' },
+        { key: 'autoRedirect',     label: 'Auto-redirect',   desc: 'Tự chuyển trang & copy ID' },
+        { key: 'hdDownloader',     label: 'Tải ảnh bìa HD',  desc: 'Nút tải ảnh bìa' },
+        { key: 'readingTracker',   label: 'Đánh dấu truyện', desc: 'Badge & quản lý danh sách' },
+        { key: 'scoreBadge',       label: 'Badge điểm',      desc: 'Hiển thị điểm kế tựa đề trên library/rank' },
+    ];
     function createUI() {
         if (!isFanqie || document.getElementById('fq-fab-row')) return;
-
         const fabRow = document.createElement('div');
         fabRow.id = 'fq-fab-row';
-
         const settingsBtn = document.createElement('button');
         settingsBtn.className = 'fq-fab fq-fab-settings';
         settingsBtn.innerHTML = '⚙ Cài đặt';
-
         const managerBtn = document.createElement('button');
         managerBtn.className = 'fq-fab';
         managerBtn.innerHTML = '📚 Quản lý ID';
         if (!CONFIG.readingTracker) managerBtn.style.display = 'none';
-
         fabRow.append(settingsBtn, managerBtn);
         document.body.appendChild(fabRow);
-
 // Settings panel
         const settingsPanel = document.createElement('div');
         settingsPanel.id = 'fq-settings-panel';
@@ -561,13 +689,11 @@
             <div class="fq-settings-note">⚠ Một số thay đổi cần tải lại trang để có hiệu lực.</div>
         `;
         document.body.appendChild(settingsPanel);
-
         settingsBtn.onclick = () => {
             settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
             managerPanel.style.display = 'none';
         };
         document.getElementById('fq-settings-close').onclick = () => { settingsPanel.style.display = 'none'; };
-
         settingsPanel.querySelectorAll('input[data-key]').forEach(input => {
             input.addEventListener('change', () => {
                 const key = input.dataset.key;
@@ -580,7 +706,6 @@
                 toast(`${input.checked ? '✓ Đã bật' : '✗ Đã tắt'}: ${label}`, input.checked ? 'success' : 'info');
             });
         });
-
 // Manager panel
         const managerPanel = document.createElement('div');
         managerPanel.id = 'fq-manager-panel';
@@ -598,20 +723,17 @@
                 <button class="fq-btn-clear" id="fq-clear">Xóa sạch</button>
             </div>`;
         document.body.appendChild(managerPanel);
-
         const refreshCount = async () => {
             const ids = await getAllIds();
             const el = document.getElementById('fq-count');
             if (el) el.textContent = ids.length;
         };
-
         managerBtn.onclick = () => {
             managerPanel.style.display = managerPanel.style.display === 'block' ? 'none' : 'block';
             settingsPanel.style.display = 'none';
             if (managerPanel.style.display === 'block') refreshCount();
         };
         document.getElementById('fq-manager-close').onclick = () => { managerPanel.style.display = 'none'; };
-
         document.getElementById('fq-save').onclick = async () => {
             const input = document.getElementById('fq-textarea').value;
             const matches = [...new Set(input.match(/\d{15,20}/g) || [])];
@@ -654,18 +776,18 @@
         debounceTimer = setTimeout(() => {
             handleDetailPage();
             markBooksInLibrary();
-        }, 300);
+            injectScoreBadgesWithRetry();
+        }, 500);
     }
-
     async function init() {
         if (isFanqie) {
             await openDB();
             handleDetailPage();
             markBooksInLibrary();
+            injectScoreBadgesWithRetry();
             createUI();
         }
     }
-
     if (isFanqie) {
         const trackerObserver = new MutationObserver(debouncedInit);
         run(() => {
@@ -673,5 +795,22 @@
             init();
         });
     }
-
+    // SPA navigation support for score badges
+    let lastPath = location.pathname;
+    const onNav = () => {
+        if (location.pathname !== lastPath) {
+            lastPath = location.pathname;
+            // Reset state để badge inject lại đúng cho trang mới
+            resetScoreBadgeState();
+            if (/^\/(library|rank|author-page|search)/.test(location.pathname)) {
+                // Delay ngắn để React/Vue kịp render skeleton, sau đó retry tự động
+                setTimeout(() => injectScoreBadgesWithRetry(), 600);
+            }
+        }
+    };
+    window.addEventListener('popstate', onNav);
+    const _push = history.pushState.bind(history);
+    history.pushState = (...a) => { _push(...a); onNav(); };
+    const _replace = history.replaceState.bind(history);
+    history.replaceState = (...a) => { _replace(...a); onNav(); };
 })();
