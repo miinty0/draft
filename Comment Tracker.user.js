@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Comment Tracker
 // @history
-// @namespace    Miinty0
+// @namespace    Minty
 // @version      2.0
 // @description  Load, filter, and manage comment notifications
 // @match        *://*/user/*/binh-luan*
@@ -679,6 +679,14 @@
           <div class="wct-info-title">Các chế độ load</div>
         </div>
         <div class="wct-info-row">
+          <span class="wct-info-badge">Tất cả</span>
+          <span class="wct-info-desc">Lấy tất cả bình luận từ trang 1 đến hết. Sẽ mất vài phút.</span>
+        </div>
+        <div class="wct-info-row">
+          <span class="wct-info-badge">Đồng bộ</span>
+          <span class="wct-info-desc">Lấy tất cả bình luận cho đến khi gặp bình luận đánh dấu (Marked) - dùng sau khi đã "Xoá &amp; giữ mark" để cập nhật bình luận mới.</span>
+        </div>
+        <div class="wct-info-row">
           <span class="wct-info-badge">N mới nhất</span>
           <span class="wct-info-desc">VD lấy 100 bình luận mới nhất.</span>
         </div>
@@ -689,14 +697,6 @@
         <div class="wct-info-row">
           <span class="wct-info-badge">Từ trang N</span>
           <span class="wct-info-desc">VD lấy tất cả bình luận từ trang 30 đến hết - hữu ích khi script bị chặn ngầm giữa chừng.</span>
-        </div>
-        <div class="wct-info-row">
-          <span class="wct-info-badge">Tất cả</span>
-          <span class="wct-info-desc">Lấy tất cả bình luận từ trang 1 đến hết. Sẽ mất vài phút.</span>
-        </div>
-        <div class="wct-info-row">
-          <span class="wct-info-badge">Đồng bộ</span>
-          <span class="wct-info-desc">Lấy tất cả bình luận cho đến khi gặp bình luận đánh dấu (Marked) - dùng sau khi đã "Xoá &amp; giữ mark" để cập nhật bình luận mới.</span>
         </div>
         <div class="wct-info-sep"></div>
         <div>
@@ -726,11 +726,12 @@
           <div class="wct-field">
             <span class="wct-flabel">Chế độ</span>
             <select id="wct-mode">
-              <option value="count">N bình luận mới nhất</option>
-              <option value="hours">Trong N giờ qua</option>
               <option value="all">Tất cả</option>
-              <option value="from_page">Từ trang N đến cuối</option>
               <option value="sync">Đồng bộ (tới mark mới nhất)</option>
+              <option value="count">N bình luận mới nhất</option>
+              <option value="hours">N giờ qua</option>
+              <option value="from_page">Từ trang N đến cuối</option>
+
             </select>
           </div>
           <div class="wct-field" id="wct-param-row">
