@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Upload File (mở rộng)
 // @namespace    http://tampermonkey.net/
-// @version      3.0
+// @version      4.0
 // @author       Minty
 // @description  upload chapter
 // @match        *://*/nhung-file*
@@ -136,7 +136,7 @@
             background-color: #ffffff;
             min-height: 38px;
             z-index: 10001;
-        `,V.onchange=e=>{var e=parseInt(e.target.value),e=c[e],t=(p=e,ue(),e.querySelector(".volume-wrapper"));!(!t||"true"!==t.getAttribute("data-append"))&&(t=e.querySelector('.btn-add-volume[data-action="appendLastVolume"]'),e=e.querySelector(".append-last-volume"),t)&&e&&e.classList.contains("hide")&&t.click()},N.appendChild(V),P.appendChild(N);$=document.createElement("input");$.type="file",$.id="autoUploadFileInput",$.multiple=!0,$.accept=".txt",$.style.display="none",P.appendChild($);const Y=document.createElement("label");Y.setAttribute("for","autoUploadFileInput"),Y.style.cssText=`
+        `,V.onchange=e=>{var e=parseInt(e.target.value),e=c[e],t=(p=e,ue(),e.querySelector(".volume-wrapper"));!(!t||"true"!==t.getAttribute("data-append"))&&(t=e.querySelector('.btn-add-volume[data-action="appendLastVolume"]'),e=e.querySelector(".append-last-volume"),t)&&e&&e.classList.contains("hide")&&t.click()},N.appendChild(V),P.appendChild(N);$=document.createElement("input");$.type="file",$.id="autoUploadFileInput",$.multiple=!0,$.accept=".txt,.zip",$.style.display="none",P.appendChild($);const Y=document.createElement("label");Y.setAttribute("for","autoUploadFileInput"),Y.style.cssText=`
             display: flex;
             align-items: center;
             justify-content: center;
@@ -158,15 +158,209 @@
                 <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
                 <polyline points="13 2 13 9 20 9"/>
             </svg>
-        `,Y.appendChild(e),document.createElement("span"));A.textContent="Chọn file",A.style.color="white",Y.appendChild(A),Y.onmouseover=()=>{Y.style.background="#153f7a",Y.style.borderColor="#153f7a",Y.style.transform="translateY(-1px)",Y.style.boxShadow="0 4px 12px rgba(26,86,161,0.5)"},Y.onmouseout=()=>{Y.style.background="#1C75E1",Y.style.borderColor="none",Y.style.transform="translateY(0)",Y.style.boxShadow="0 2px 8px rgba(26,86,161,0.4)"},P.appendChild(Y);(function(){var w=document.createElement("div");w.style.cssText="margin-top:6px;margin-bottom:8px;";var lb=document.createElement("div");lb.textContent="Tên chương lấy từ:";lb.style.cssText="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px;";w.appendChild(lb);var row=document.createElement("div");row.style.cssText="display:flex;gap:6px;";var btns={};[{val:"firstLine",label:"📄 Dòng đầu file"},{val:"fileName",label:"📝 Tên file"}].forEach(function(opt){var btn=document.createElement("button");btn.type="button";btn.textContent=opt.label;btn.dataset.val=opt.val;var active=opt.val==="fileName";btn.style.cssText="flex:1;padding:8px 10px;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;transition:all 0.18s;border:2px solid "+(active?"#7952b3":"#d6cfc4")+";background:"+(active?"#7952b3":"#ffffff")+";color:"+(active?"#ffffff":"#374151")+";box-shadow:"+(active?"0 2px 6px rgba(121,82,179,0.28)":"none")+";";btn.addEventListener("click",function(){nameSource=opt.val;Object.keys(btns).forEach(function(k){var b=btns[k],on=k===opt.val;b.style.background=on?"#7952b3":"#ffffff";b.style.color=on?"#ffffff":"#374151";b.style.borderColor=on?"#7952b3":"#d6cfc4";b.style.boxShadow=on?"0 2px 6px rgba(121,82,179,0.28)":"none";b.style.transform=on?"translateY(-1px)":"translateY(0)";});});btn.addEventListener("mouseenter",function(){if(nameSource!==opt.val)btn.style.background="#f3f0f8";});btn.addEventListener("mouseleave",function(){if(nameSource!==opt.val)btn.style.background="#ffffff";});btns[opt.val]=btn;row.appendChild(btn);});w.appendChild(row);P.appendChild(w);})();const K=document.createElement("div"),ze=(K.style.cssText="color: #374151; font-size: 13px; margin-top: 6px; margin-bottom: 6px; display: none; padding-left: 4px;",P.appendChild(K),document.createElement("div"));ze.style.cssText="display: none; max-height: 150px; overflow-y: auto; background: #f8f9fa; border: 1px solid #d6cfc4; border-radius: 4px; padding: 8px; margin-bottom: 6px; font-size: 12px;",P.appendChild(ze);$.onchange=e=>{e=(t=Array.from(e.target.files)).length;ue(),0<e?(K.textContent=`Đã chọn ${e} file`,K.style.cssText=`
-                    color: #155724;
-                    font-size: 13px;
-                    margin-top: 6px;
-                    margin-bottom: 6px;
-                    display: block;
-                    font-weight: 600;
-                    padding-left: 4px;
-                `):(K.textContent="",K.style.cssText="color: #374151; font-size: 13px; margin-top: 6px; margin-bottom: 6px; display: none; padding-left: 4px;"),ze.style.display="none"};g=document.createElement("input");g.type="hidden";g.value="[VIP]";P.appendChild(g);let uploadQueue=[];const queueContainer=document.createElement("div");queueContainer.style.cssText="margin-bottom:8px;display:none;";const queueTitle=document.createElement("div");queueTitle.style.cssText="color:#374151;font-size:13px;font-weight:600;margin-bottom:6px;padding:0 4px;";queueTitle.textContent="📋 Hàng chờ upload:";queueContainer.appendChild(queueTitle);const queueList=document.createElement("div");queueList.style.cssText="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;border:1px solid #d6cfc4;border-radius:6px;padding:6px;background:#fafaf8;";queueContainer.appendChild(queueList);P.appendChild(queueContainer);function renderQueue(){queueList.innerHTML="";if(uploadQueue.length===0){queueContainer.style.display="none";return;}queueContainer.style.display="block";uploadQueue.forEach((item,idx)=>{const row=document.createElement("div");row.style.cssText="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:#fff;border:1px solid #e5e1da;border-radius:4px;font-size:12px;";const info=document.createElement("span");info.style.cssText="color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";info.textContent=`${idx+1}. ${item.volumeName} — ${item.files.length} file`;info.title=`${item.volumeName}: `+item.files.map(f=>f.name).join(", ");const del=document.createElement("button");del.textContent="✕";del.style.cssText="background:none;border:none;color:#dc3545;cursor:pointer;font-size:13px;padding:0 4px;margin-left:4px;";del.title="Xóa khỏi hàng chờ";del.onclick=()=>{uploadQueue.splice(idx,1);renderQueue();};row.appendChild(info);row.appendChild(del);queueList.appendChild(row);});}const actionRow=document.createElement("div");actionRow.style.cssText="display: flex; gap: 8px; margin-bottom: 8px; width: 100%;";P.appendChild(actionRow);const addToQueueBtn=document.createElement("button");addToQueueBtn.style.cssText=`
+        `,Y.appendChild(e),document.createElement("span"));A.textContent="Chọn file",A.style.color="white",Y.appendChild(A),Y.onmouseover=()=>{Y.style.background="#153f7a",Y.style.borderColor="#153f7a",Y.style.transform="translateY(-1px)",Y.style.boxShadow="0 4px 12px rgba(26,86,161,0.5)"},Y.onmouseout=()=>{Y.style.background="#1C75E1",Y.style.borderColor="none",Y.style.transform="translateY(0)",Y.style.boxShadow="0 2px 8px rgba(26,86,161,0.4)"},P.appendChild(Y);(function(){var w=document.createElement("div");w.style.cssText="margin-top:6px;margin-bottom:8px;";var lb=document.createElement("div");lb.textContent="Tên chương lấy từ:";lb.style.cssText="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px;";w.appendChild(lb);var row=document.createElement("div");row.style.cssText="display:flex;gap:6px;";var btns={};[{val:"firstLine",label:"📄 Dòng đầu file"},{val:"fileName",label:"📝 Tên file"}].forEach(function(opt){var btn=document.createElement("button");btn.type="button";btn.textContent=opt.label;btn.dataset.val=opt.val;var active=opt.val==="fileName";btn.style.cssText="flex:1;padding:8px 10px;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;transition:all 0.18s;border:2px solid "+(active?"#7952b3":"#d6cfc4")+";background:"+(active?"#7952b3":"#ffffff")+";color:"+(active?"#ffffff":"#374151")+";box-shadow:"+(active?"0 2px 6px rgba(121,82,179,0.28)":"none")+";";btn.addEventListener("click",function(){nameSource=opt.val;Object.keys(btns).forEach(function(k){var b=btns[k],on=k===opt.val;b.style.background=on?"#7952b3":"#ffffff";b.style.color=on?"#ffffff":"#374151";b.style.borderColor=on?"#7952b3":"#d6cfc4";b.style.boxShadow=on?"0 2px 6px rgba(121,82,179,0.28)":"none";b.style.transform=on?"translateY(-1px)":"translateY(0)";});});btn.addEventListener("mouseenter",function(){if(nameSource!==opt.val)btn.style.background="#f3f0f8";});btn.addEventListener("mouseleave",function(){if(nameSource!==opt.val)btn.style.background="#ffffff";});btns[opt.val]=btn;row.appendChild(btn);});w.appendChild(row);P.appendChild(w);})();const K=document.createElement("div"),ze=(K.style.cssText="color: #374151; font-size: 13px; margin-top: 6px; margin-bottom: 6px; display: none; padding-left: 4px;",P.appendChild(K),document.createElement("div"));ze.style.cssText="display: none; max-height: 150px; overflow-y: auto; background: #f8f9fa; border: 1px solid #d6cfc4; border-radius: 4px; padding: 8px; margin-bottom: 6px; font-size: 12px;",P.appendChild(ze);// Helper: extract txt files from zip
+// Parse ZIP thuần túy không dùng JSZip (JSZip.entry.async bị block trong Tampermonkey sandbox)
+async function _decompressDeflate(compressedBytes){
+    const ds=new DecompressionStream("deflate-raw");
+    const writer=ds.writable.getWriter();
+    const reader=ds.readable.getReader();
+    writer.write(compressedBytes);
+    writer.close();
+    const chunks=[];
+    while(true){
+        const {done,value}=await reader.read();
+        if(done)break;
+        chunks.push(value);
+    }
+    const total=chunks.reduce((s,c)=>s+c.byteLength,0);
+    const out=new Uint8Array(total);
+    let off=0;
+    for(const c of chunks){out.set(c,off);off+=c.byteLength;}
+    return out;
+}
+async function _extractTxtFromZip(zipFile){
+    const arrayBuffer=await new Promise((resolve,reject)=>{
+        const fr=new FileReader();
+        fr.onload=()=>resolve(fr.result);
+        fr.onerror=()=>reject(fr.error||new Error("FileReader error"));
+        fr.readAsArrayBuffer(zipFile);
+    });
+    const buf=new Uint8Array(arrayBuffer);
+    const view=new DataView(arrayBuffer);
+    const files=[];
+    let i=0;
+    while(i<buf.length-4){
+        // Local file header signature = 0x04034b50
+        if(view.getUint32(i,true)!==0x04034b50){i++;continue;}
+        const compression=view.getUint16(i+8,true);
+        const compressedSize=view.getUint32(i+18,true);
+        const fileNameLen=view.getUint16(i+26,true);
+        const extraLen=view.getUint16(i+28,true);
+        const fileNameBytes=buf.slice(i+30,i+30+fileNameLen);
+        const fileName=new TextDecoder("utf-8").decode(fileNameBytes);
+        const dataStart=i+30+fileNameLen+extraLen;
+        const compressedData=buf.slice(dataStart,dataStart+compressedSize);
+        i=dataStart+compressedSize;
+        // Filter
+        if(fileName.includes("__MACOSX")||fileName.includes(".DS_Store"))continue;
+        const baseName=fileName.split("/").pop();
+        if(!baseName||!baseName.match(/\.txt$/i))continue;
+        let rawBytes;
+        if(compression===0){
+            rawBytes=compressedData;
+        }else if(compression===8){
+            rawBytes=await _decompressDeflate(compressedData);
+        }else{
+            continue; // compression method không hỗ trợ
+        }
+        const blob=new Blob([rawBytes],{type:"text/plain"});
+        files.push(new File([blob],baseName,{type:"text/plain"}));
+    }
+    files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}));
+    return files;
+}
+// Helper: extract chapter title from filename (strip leading digits/underscores)
+function _chapterTitleFromFile(f){
+    return f.name.replace(/\.txt$/i,"").replace(/^\d+[_\-\s]*/,"").trim();
+}
+$.addEventListener("change",async e=>{
+    const rawFiles=Array.from(e.target.files);
+    // Separate zip vs txt
+    const zipFiles=rawFiles.filter(f=>f.name.match(/\.zip$/i));
+    let txtFiles=rawFiles.filter(f=>f.name.match(/\.txt$/i));
+    if(zipFiles.length>0){
+        K.textContent="⏳ Đang giải nén ZIP...";
+        K.style.cssText="color:#856404;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
+        try{
+            // Khởi động TẤT CẢ FileReader song song NGAY LẬP TỨC (không await trước)
+            // để tránh SecurityError do user activation timeout
+            const zipPromises=zipFiles.map(zf=>_extractTxtFromZip(zf));
+            const results=await Promise.all(zipPromises);
+            results.forEach(extracted=>{txtFiles=txtFiles.concat(extracted);});
+        }catch(err){
+            K.textContent="❌ Lỗi giải nén ZIP: "+err.message;
+            K.style.cssText="color:#dc3545;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
+            return;
+        }
+        // Sort all txt files by name
+        txtFiles.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}));
+    }
+    t=txtFiles;
+    ue();
+    const count=t.length;
+    if(0<count){
+        K.textContent=`Đã chọn ${count} file${zipFiles.length>0?" (từ ZIP)":""}`;
+        K.style.cssText="color:#155724;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
+        // Build range UI
+        _buildRangeUI(t);
+    }else{
+        K.textContent="";
+        K.style.cssText="color:#374151;font-size:13px;margin-top:6px;margin-bottom:6px;display:none;padding-left:4px;";
+        _buildRangeUI([]);
+    }
+    ze.style.display="none";
+});
+// ── Range load UI ─────────────────────────────────────────────────────
+const rangeContainer=document.createElement("div");
+rangeContainer.style.cssText="display:none;margin-bottom:8px;padding:8px;background:#f0f4ff;border:1.5px solid #c3d4f8;border-radius:8px;box-sizing:border-box;";
+const rangeLbl=document.createElement("div");
+rangeLbl.style.cssText="font-size:12px;font-weight:700;color:#1e3a8a;margin-bottom:6px;display:flex;align-items:center;gap:5px;";
+rangeLbl.innerHTML=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Load theo range chương`;
+rangeContainer.appendChild(rangeLbl);
+const rangeRow1=document.createElement("div");
+rangeRow1.style.cssText="display:flex;align-items:center;gap:6px;margin-bottom:5px;";
+const rangeFromLbl=document.createElement("span");
+rangeFromLbl.textContent="Từ:";
+rangeFromLbl.style.cssText="font-size:12px;color:#374151;font-weight:600;white-space:nowrap;min-width:24px;";
+const rangeFromInput=document.createElement("input");
+rangeFromInput.type="text";
+rangeFromInput.placeholder="Tên chương đầu (VD: 第420章 掉河里了)";
+rangeFromInput.style.cssText="flex:1;padding:6px 8px;font-size:12px;border:1.5px solid #c3d4f8;border-radius:6px;outline:none;box-sizing:border-box;";
+rangeFromInput.addEventListener("focus",()=>{rangeFromInput.style.borderColor="#1C75E1";});
+rangeFromInput.addEventListener("blur",()=>{rangeFromInput.style.borderColor="#c3d4f8";});
+rangeRow1.appendChild(rangeFromLbl);
+rangeRow1.appendChild(rangeFromInput);
+rangeContainer.appendChild(rangeRow1);
+const rangeRow2=document.createElement("div");
+rangeRow2.style.cssText="display:flex;align-items:center;gap:6px;margin-bottom:6px;";
+const rangeToLbl=document.createElement("span");
+rangeToLbl.textContent="Đến:";
+rangeToLbl.style.cssText="font-size:12px;color:#374151;font-weight:600;white-space:nowrap;min-width:24px;";
+const rangeToInput=document.createElement("input");
+rangeToInput.type="text";
+rangeToInput.placeholder="Tên chương cuối (VD: 第422章 骗牛妞去打针)";
+rangeToInput.style.cssText="flex:1;padding:6px 8px;font-size:12px;border:1.5px solid #c3d4f8;border-radius:6px;outline:none;box-sizing:border-box;";
+rangeToInput.addEventListener("focus",()=>{rangeToInput.style.borderColor="#1C75E1";});
+rangeToInput.addEventListener("blur",()=>{rangeToInput.style.borderColor="#c3d4f8";});
+rangeRow2.appendChild(rangeToLbl);
+rangeRow2.appendChild(rangeToInput);
+rangeContainer.appendChild(rangeRow2);
+const rangeApplyBtn=document.createElement("button");
+rangeApplyBtn.style.cssText="width:100%;padding:7px;background:#1e3a8a;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.18s;";
+rangeApplyBtn.textContent="✂️ Lọc theo range";
+rangeApplyBtn.onmouseover=()=>{rangeApplyBtn.style.background="#1e40af";};
+rangeApplyBtn.onmouseout=()=>{rangeApplyBtn.style.background="#1e3a8a";};
+const rangeStatus=document.createElement("div");
+rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:none;padding:4px 6px;border-radius:4px;";
+rangeContainer.appendChild(rangeApplyBtn);
+rangeContainer.appendChild(rangeStatus);
+P.appendChild(rangeContainer);
+let _allLoadedFiles=[];
+function _buildRangeUI(files){
+    _allLoadedFiles=files;
+    if(files.length===0){rangeContainer.style.display="none";return;}
+    rangeContainer.style.display="block";
+    rangeFromInput.value="";rangeToInput.value="";
+    rangeStatus.style.display="none";
+}
+function _normalizeTitle(s){return s.trim().replace(/\s+/g," ");}
+rangeApplyBtn.onclick=()=>{
+    const fromRaw=rangeFromInput.value.trim();
+    const toRaw=rangeToInput.value.trim();
+    if(!fromRaw&&!toRaw){
+        // Reset: use all files
+        t=_allLoadedFiles.slice();
+        K.textContent=`Đã chọn ${t.length} file (tất cả)`;
+        K.style.cssText="color:#155724;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
+        rangeStatus.textContent="Đã reset về toàn bộ file.";
+        rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:block;padding:4px 6px;border-radius:4px;background:#d4edda;color:#155724;";
+        return;
+    }
+    // Match by title: strip ONLY leading digits (0001_, 0002- etc.) from filename
+    function titleOf(f){return _normalizeTitle(f.name.replace(/\.txt$/i,"").replace(/^\d+[_\-\s]*/,""));}
+    const fromN=_normalizeTitle(fromRaw);
+    const toN=_normalizeTitle(toRaw);
+    // Find indices — exact match only
+    let startIdx=-1,endIdx=-1;
+    _allLoadedFiles.forEach((f,i)=>{
+        const title=titleOf(f);
+        if(fromN&&startIdx===-1&&title===fromN)startIdx=i;
+        if(toN&&title===toN)endIdx=i;
+    });
+    if(fromN&&startIdx===-1){
+        rangeStatus.textContent=`❌ Không tìm thấy chương đầu: "${fromRaw}"`;
+        rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:block;padding:4px 6px;border-radius:4px;background:#f8d7da;color:#721c24;";
+        return;
+    }
+    if(toN&&endIdx===-1){
+        rangeStatus.textContent=`❌ Không tìm thấy chương cuối: "${toRaw}"`;
+        rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:block;padding:4px 6px;border-radius:4px;background:#f8d7da;color:#721c24;";
+        return;
+    }
+    if(startIdx===-1)startIdx=0;
+    if(endIdx===-1)endIdx=_allLoadedFiles.length-1;
+    if(startIdx>endIdx){
+        rangeStatus.textContent=`❌ Chương đầu (vị trí ${startIdx+1}) phải trước chương cuối (vị trí ${endIdx+1}).`;
+        rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:block;padding:4px 6px;border-radius:4px;background:#f8d7da;color:#721c24;";
+        return;
+    }
+    t=_allLoadedFiles.slice(startIdx,endIdx+1);
+    K.textContent=`Đã chọn ${t.length} file (từ "${titleOf(_allLoadedFiles[startIdx])}" đến "${titleOf(_allLoadedFiles[endIdx])}")`;
+    K.style.cssText="color:#155724;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
+    rangeStatus.textContent=`✅ Đã lọc: ${t.length} chương (vị trí ${startIdx+1}–${endIdx+1} trong ${_allLoadedFiles.length} file).`;
+    rangeStatus.style.cssText="font-size:11px;margin-top:5px;display:block;padding:4px 6px;border-radius:4px;background:#d4edda;color:#155724;";
+    ue();
+};g=document.createElement("input");g.type="hidden";g.value="[VIP]";P.appendChild(g);let uploadQueue=[];const queueContainer=document.createElement("div");queueContainer.style.cssText="margin-bottom:8px;display:none;";const queueTitle=document.createElement("div");queueTitle.style.cssText="color:#374151;font-size:13px;font-weight:600;margin-bottom:6px;padding:0 4px;";queueTitle.textContent="📋 Hàng chờ upload:";queueContainer.appendChild(queueTitle);const queueList=document.createElement("div");queueList.style.cssText="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;border:1px solid #d6cfc4;border-radius:6px;padding:6px;background:#fafaf8;";queueContainer.appendChild(queueList);P.appendChild(queueContainer);function renderQueue(){queueList.innerHTML="";if(uploadQueue.length===0){queueContainer.style.display="none";return;}queueContainer.style.display="block";uploadQueue.forEach((item,idx)=>{const row=document.createElement("div");row.style.cssText="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:#fff;border:1px solid #e5e1da;border-radius:4px;font-size:12px;";const info=document.createElement("span");info.style.cssText="color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";info.textContent=`${idx+1}. ${item.volumeName} — ${item.files.length} file`;info.title=`${item.volumeName}: `+item.files.map(f=>f.name).join(", ");const del=document.createElement("button");del.textContent="✕";del.style.cssText="background:none;border:none;color:#dc3545;cursor:pointer;font-size:13px;padding:0 4px;margin-left:4px;";del.title="Xóa khỏi hàng chờ";del.onclick=()=>{uploadQueue.splice(idx,1);renderQueue();};row.appendChild(info);row.appendChild(del);queueList.appendChild(row);});}const actionRow=document.createElement("div");actionRow.style.cssText="display: flex; gap: 8px; margin-bottom: 8px; width: 100%;";P.appendChild(actionRow);const addToQueueBtn=document.createElement("button");addToQueueBtn.style.cssText=`
     background:#F36F0A;color:white;border:none;padding:9px 8px;border-radius:8px;
     cursor:pointer;flex:1;margin:0;font-weight:600;font-size:12px;transition:all 0.2s;
     box-shadow:0 2px 8px rgba(217,119,6,0.45);display:flex;align-items:center;
@@ -1164,15 +1358,20 @@ const translateTextAPI = (text, tl = "vi") => {
             return;
         }
 
-        const titleCnMatch  = cnText.match(/书名[：:]\s*(.*)/);
-        const authorCnMatch = cnText.match(/作者[：:]\s*(.*)/);
+        // Parse từ văn bản GỐC (cnText) — dùng marker tiếng Việt vì thực tế file dùng vậy
+        const titleCnMatch  = cnText.match(/Tên (?:sách|truyện)[：:]\s*(.*)/i);
+        const authorCnMatch = cnText.match(/(?:作者|Tác giả)[：:]\s*(.*)/i);
+        const tagCnMatch    = cnText.match(/Nhãn[：:]\s*(.*)/i);
+
+        // Parse từ bản DỊCH (viText)
         const titleViMatch  = viText.match(/Tên (?:sách|truyện)[：:]\s*(.*)/i);
+        const authorViMatch = viText.match(/Tác giả[：:]\s*(.*)/i);
         const categoryMatch = viText.match(/Phân loại[：:]\s*(.*)/i);
         const tagMatch      = viText.match(/Nhãn[：:]\s*(.*)/i);
         const summaryMatch  = viText.match(/(?:Tóm tắt|Giới thiệu)[：:]\s*([\s\S]*)/i);
         const summary = summaryMatch ? summaryMatch[1].trim() : "";
 
-        // Build title: "Tên web (web) / Tên cũ (file)" — capitalize first letter
+        // txtTitleVi: webVi / tên từ bản dịch
         const rawFileTitleVi = titleViMatch ? titleViMatch[1].trim() : "";
         let finalTitleVi = "";
         if (webVi && rawFileTitleVi) {
@@ -1182,11 +1381,23 @@ const translateTextAPI = (text, tl = "vi") => {
         } else {
             finalTitleVi = rawFileTitleVi;
         }
-        // Capitalize first letter
         finalTitleVi = _capFull(finalTitleVi);
 
-        let finalTitleCn = webCn || (titleCnMatch ? titleCnMatch[1].trim() : "");
+        // txtTitleCn: webCn / tên từ văn bản gốc
+        const rawFileTitleCn = titleCnMatch ? titleCnMatch[1].trim() : "";
+        let finalTitleCn = "";
+        if (webCn && rawFileTitleCn) {
+            finalTitleCn = webCn;  // chỉ dùng webCn, không ghép vì CN không cần /
+        } else if (webCn) {
+            finalTitleCn = webCn;
+        } else {
+            finalTitleCn = rawFileTitleCn;
+        }
 
+        // txtAuthorCn: lấy từ văn bản gốc (giữ nguyên ký tự gốc)
+        const finalAuthorCn = authorCnMatch ? authorCnMatch[1].trim() : "";
+
+        // txtDescVi: Nhãn (VI) + Tóm tắt (VI) — không có Phân loại nếu không có
         let descParts = [];
         if (categoryMatch) descParts.push("Phân loại: " + categoryMatch[1].trim());
         if (tagMatch)      descParts.push("Nhãn: " + tagMatch[1].trim());
@@ -1202,7 +1413,7 @@ const translateTextAPI = (text, tl = "vi") => {
         const ok = [
             fire(inputTitleVi, finalTitleVi),
             fire(inputTitleCn, finalTitleCn),
-            authorCnMatch && fire(inputAuthorCn, authorCnMatch[1].trim()),
+            finalAuthorCn && fire(inputAuthorCn, finalAuthorCn),
             finalDesc && fire(inputDescVi, finalDesc)
         ].some(Boolean);
 
