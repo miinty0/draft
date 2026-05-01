@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Comment Tracker
-// @history
+// @history      Sửa lỗi lấy N bình luận không đúng với yêu cầu do ghi đè, version mới này sẽ lấy hết các bình luận TRỪ khi bình luận cùng user cùng nội dung và cùng URL (aka spam)
 // @namespace    Minty
-// @version      2.0
+// @version      3.0
 // @description  Load, filter, and manage comment notifications
 // @match        *://*/user/*/binh-luan*
 // @grant        GM_getValue
@@ -13,14 +13,14 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  // ─ STORAGE
+  //  STORAGE
   const STORE_KEY  = 'wct_comments';
   const MARK_KEY    = 'wct_mark_ids';
   const loadStore   = () => { try { return JSON.parse(GM_getValue(STORE_KEY,  '[]')); } catch { return []; } };
   const saveStore   = a  => GM_setValue(STORE_KEY,  JSON.stringify(a));
   const loadMarks = () => { try { return JSON.parse(GM_getValue(MARK_KEY, '[]')); } catch { return []; } };
   const saveMarks = a  => GM_setValue(MARK_KEY, JSON.stringify(a));
-  // ─ SANITIZE ─
+  //  SANITIZE 
   // <img> có "thaonema" → [sticker], còn lại → [image]
   const BLOCK_TAGS = new Set(['p','div','blockquote','li','pre','h1','h2','h3','h4','h5','h6']);
   const ALLOWED_TAGS = new Set([    'b','strong','i','em','u','s','strike','del','ins','sup','sub','small','mark',
@@ -84,11 +84,9 @@
             walk(span);
             continue;
           }
-          // Lọc attributes
           const allowedForTag = (ALLOWED_ATTRS[tag] || []).concat(ALLOWED_ATTRS['*'] || []);
           Array.from(child.attributes).forEach(attr => {
             if (attr.name === 'style') {
-              // Lọc style: chỉ giữ format an toàn
               const cleaned = sanitizeStyle(attr.value);
               if (cleaned) child.setAttribute('style', cleaned);
               else child.removeAttribute('style');
@@ -114,7 +112,7 @@
     });
     return tmp.innerHTML;
   }
-  // ─ PARSE
+  //  PARSE
   function parseArticles(doc) {
     return Array.from(doc.querySelectorAll('article.notification')).map(art => {
       const href     = art.querySelector('a.notification-content')?.getAttribute('href') ?? '';
@@ -129,14 +127,14 @@
     });
   }
   function getTotalPages(doc) {
-    // Ưu tiên 1: Nút trang cuối - icon »
+    // 1. icon »
     const lastBtn = doc.querySelector('ul.pagination a i.fa-angle-double-right, .pagination a i.fa-angle-double-right');
     if (lastBtn) {
       const href = lastBtn.closest('a')?.getAttribute('href') || '';
       const m = href.match(/[?&]start=(\d+)/);
       if (m) return Math.floor(parseInt(m[1], 10) / 10) + 1;
     }
-    // Ưu tiên 2: Đọc start= lớn nhất từ tất cả link pagination
+    // 2. start=max
     let maxStart = 0;
     doc.querySelectorAll('ul.pagination a[href*="start="], .pagination a[href*="start="]').forEach(a => {
       const m = (a.getAttribute('href') || '').match(/[?&]start=(\d+)/);
@@ -146,7 +144,7 @@
       }
     });
     if (maxStart > 0) return Math.floor(maxStart / 10) + 1;
-    // Fallback: đọc số lớn nhất từ text link
+    // Fallback
     let max = 1;
     doc.querySelectorAll('ul.pagination li a, .pagination a').forEach(a => {
       const n = parseInt(a.textContent.trim(), 10);
@@ -154,16 +152,16 @@
     });
     return max;
   }
-  // Random delay giữa min và max ms
+  // Random delay
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const sleepRandom = (min, max) => sleep(min + Math.random() * (max - min));
-  // Load 1 trang với retry + exponential backoff
+  // Retry + exponential backoff
   async function loadPage(url, attempt = 0) {
     try {
       const res = await fetch(url, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
-      // Phát hiện trang lỗi / captcha / redirect đăng nhập
+      // Error page / captcha / redirect log in
       if (text.length < 500 || text.includes('đăng nhập') || text.includes('login')) {
         throw new Error('Trang trả về không hợp lệ (có thể bị chặn hoặc hết session)');
       }
@@ -177,7 +175,7 @@
     }
   }
   const baseUrl = () => location.href.split('?')[0];
-  // ─ KEEP-ALIVE AUDIO ─
+  //  KEEP-ALIVE AUDIO 
   let _audioCtx = null, _audioSrc = null;
   function startKeepAlive() {
     try {
@@ -232,20 +230,37 @@
       if (!done) {
         if (page >= totalPages) break;
         page++;
-        // Delay ngẫu nhiên
-        await sleepRandom(100, 500);
+        await sleepRandom(500, 1000);
       }
     }
     return collected;
   }
   function mergeComments(existing, fresh) {
+    // map: id → comment
     const map = new Map(existing.map(c => [c.id, c]));
-    fresh.forEach(c => map.set(c.id, c));
+    fresh.forEach(c => {
+      if (!map.has(c.id)) {
+        map.set(c.id, c);
+      } else {
+        const old = map.get(c.id);
+        if (old.msg === c.msg) {
+          map.set(c.id, c);
+        } else {
+          let suffix = 2;
+          let newId = `${c.id}_${suffix}`;
+          while (map.has(newId)) {
+            suffix++;
+            newId = `${c.id}_${suffix}`;
+          }
+          map.set(newId, { ...c, id: newId });
+        }
+      }
+    });
     return [...map.values()].sort((a, b) => b.ts - a.ts);
   }
-  // ─ UI STATE ─
+  //  UI STATE 
   let sortOrder = 'desc', searchQ = '';
-  // ─ STYLES ─
+  //  STYLES 
   function injectStyles() {
     if (document.getElementById('wct-styles')) return;
     const s = document.createElement('style');
@@ -650,7 +665,7 @@
     `;
     document.head.appendChild(s);
   }
-  // ─ BUILD PANEL
+  //  BUILD PANEL
   function buildPanel() {
     injectStyles();
     const panel = document.createElement('div');
@@ -791,7 +806,7 @@
     checkUnreadAlert();
     makeDraggable(panel, panel.querySelector('#wct-titlebar'));
   }
-  // ─ RENDER ─
+  //  RENDER 
   function renderList(comments) {
     const list    = document.getElementById('wct-list');
     const stats   = document.getElementById('wct-stats');
@@ -871,7 +886,7 @@
     const hintEl = document.getElementById('wct-mark-hint');
     if (hintEl) hintEl.classList.toggle('wct-hidden', loadStore().length === 0 || loadMarks().length > 0);
   }
-  // ─ EVENTS ─
+  //  EVENTS 
   function bindEvents(panel) {
     panel.querySelector('#wct-collapse-btn').addEventListener('click', () => {
       panel.classList.toggle('wct-collapsed');
@@ -1009,7 +1024,7 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
       if (!marks.length) saveMarks(kept.map(c => c.id));
       saveStore(kept);
       renderList(kept);
-      alert('✅ Đã xoá. Lần load tiếp theo (chế độ Đồng bộ) sẽ dừng khi gặp mark mới nhất.');
+      alert('✅ Đã xoá. Lần đồng bộ tiếp theo sẽ dừng khi gặp mark mới nhất.');
     });
     // Full reset
     panel.querySelector('#wct-reset-btn').addEventListener('click', () => {
@@ -1022,9 +1037,13 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
       gotoMarkBtn.addEventListener('click', () => {
         const marks = loadMarks();
         const store = loadStore();
-        const newestMark = store
+        const markedComments = store
           .filter(c => marks.includes(c.id))
-          .sort((a, b) => b.ts - a.ts)[0];
+          .sort((a, b) => b.ts - a.ts);
+        const targetMark = sortOrder === 'asc'
+          ? markedComments[markedComments.length - 1]
+          : markedComments[0];
+        const newestMark = targetMark;
         if (!newestMark) return;
         const allItems = Array.from(panel.querySelectorAll('#wct-list [data-item-id]'));
         const target = allItems.find(el => el.dataset.itemId === newestMark.id);
@@ -1050,7 +1069,7 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
       renderList(loadStore());
     });
   }
-  // ─ DRAG ─
+  //  DRAG 
   function makeDraggable(el, handle) {
     let ox = 0, oy = 0, sx = 0, sy = 0;
     handle.addEventListener('mousedown', e => {
@@ -1065,9 +1084,9 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
       addEventListener('mousemove', mm); addEventListener('mouseup', mu);
     });
   }
-  // ─ UTILS
+  //  UTILS
   const fmtTime = ts => new Date(ts).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
   const escHtml = s  => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  // ─ INIT ─
+  //  INIT 
   buildPanel();
 })();
