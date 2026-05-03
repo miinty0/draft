@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Tool Manager
-// @version      21
+// @version      21.1
 // @history      Sửa lỗi không hiện panel đếm tổng chương, thêm chức năng retry các trang lỗi (503) hoặc trả về rỗng, set limit số lượng trang được fetch
 // @description  Quản lý truyện
 // @author       Minty
@@ -514,7 +514,7 @@
             }
         }
         async function syncData() {
-            const userBatchSize = parseInt(document.getElementById("wd-cfg-batch").value) || 10));
+            const userBatchSize = parseInt(document.getElementById("wd-cfg-batch").value) || 10;
             const userDelay = parseInt(document.getElementById("wd-cfg-delay").value) || 2000;
             const btn = document.getElementById("wd-sync-btn");
             const msg = document.getElementById("wd-status-msg");
