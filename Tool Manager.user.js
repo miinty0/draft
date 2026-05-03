@@ -1,8 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager
-// @namespace    http://tampermonkey.net/
-// @version      20
-// @history      Thêm chức năng retry các trang lỗi (503) hoặc trả về rỗng, set limit số lượng trang được fetch
+// @version      21
+// @history      Sửa lỗi không hiện panel đếm tổng chương, thêm chức năng retry các trang lỗi (503) hoặc trả về rỗng, set limit số lượng trang được fetch
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -270,7 +269,12 @@
         }
         async function scrapeDetailData() {
             try {
-                const doc = new DOMParser().parseFromString(await (await fetch(location.href)).text(), "text/html");
+                const fetchWithTimeout = (url, ms) => {
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), ms);
+                    return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+                };
+                const doc = new DOMParser().parseFromString(await fetchWithTimeout(location.href, 35000).then(r => r.text()), "text/html");
                 const ci = doc.querySelector(".cover-info");
                 if (!ci) return null;
                 const stats = ci.querySelectorAll('span[data-ready="abbrNum"]');
@@ -282,7 +286,8 @@
                         ?.textContent.trim() || "";
                 let fanqieid = null;
                 for (const a of doc.querySelectorAll("a[href]")) {
-                    const decoded = decodeURIComponent(a.getAttribute("href") || "");
+                    const raw = a.getAttribute("href") || "";
+                    const decoded = decodeURIComponent(raw);
                     const fqMatch = decoded.match(/fanqienovel\.com\/page\/(\d{19})/);
                     if (fqMatch) {
                         fanqieid = fqMatch[1];
@@ -555,6 +560,7 @@
                     }
                 }
                 const totalCount = maxStart + lastPageCount;
+
                 // pageStart = vị trí bắt đầu của trang trong danh sách tổng 
                 const processDoc = (doc, pageStart) => {
                     const els = doc.querySelectorAll(".book-info");
