@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tool Manager
-// @version      21.1
-// @history      Sửa lỗi không hiện panel đếm tổng chương, thêm chức năng retry các trang lỗi (503) hoặc trả về rỗng, set limit số lượng trang được fetch
+// @version      21.2
+// @history      Sửa lỗi "hết hạn truy cập" nên không lưu được truyện, thêm chức năng retry các trang trả về rỗng, set limit số lượng trang được fetch
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -200,7 +200,8 @@
                 const exists = await checkInDB(data.link);
                 if (exists) {
                     const { realChapterCount, ...dataToSave } = data;
-                    const merged = { ...exists, ...dataToSave, chapter: realChapterCount };
+                    const chapterToSave = (realChapterCount !== null && realChapterCount > 0) ? realChapterCount : exists.chapter;
+                    const merged = { ...exists, ...dataToSave, chapter: chapterToSave };
                     if (!merged.fanqieid && exists.fanqieid) merged.fanqieid = exists.fanqieid;
                     await db.putBulk([merged]);
                     showToast("💾 Đã cập nhật!");
@@ -354,7 +355,8 @@
                 const allBooks = await db.getAll();
                 const maxOrder = allBooks.reduce((max, b) => Math.max(max, b.order ?? 0), 0);
                 const { realChapterCount, ...dataToAdd } = data;
-                await db.putBulk([{ ...dataToAdd, chapter: realChapterCount ?? -1, order: maxOrder + 1 }]);
+                const chapterToAdd = (realChapterCount !== null && realChapterCount > 0) ? realChapterCount : -1;
+                await db.putBulk([{ ...dataToAdd, chapter: chapterToAdd, order: maxOrder + 1 }]);
                 showToast(`✅ Đã thêm`);
                 syncChannel.postMessage({ type: "REFRESH" });
                 btn.style.opacity = "0";
@@ -546,7 +548,6 @@
                 }
                 // Đếm số truyện thực tế trên trang đầu
                 const firstPageCount = docFirst.querySelectorAll(".book-info").length;
-
                 // Fetch trang cuối để đếm số truyện thực tế (nếu chỉ có 1 trang thì trang đầu = trang cuối)
                 let lastPageCount = firstPageCount;
                 if (maxStart > 0) {
@@ -556,12 +557,11 @@
                         const docLast = new DOMParser().parseFromString(htmlLast, "text/html");
                         lastPageCount = docLast.querySelectorAll(".book-info").length;
                     } catch (e) {
-                        lastPageCount = 10; 
+                        lastPageCount = 10;
                     }
                 }
                 const totalCount = maxStart + lastPageCount;
-
-                // pageStart = vị trí bắt đầu của trang trong danh sách tổng 
+                // pageStart = vị trí bắt đầu của trang trong danh sách tổng
                 const processDoc = (doc, pageStart) => {
                     const els = doc.querySelectorAll(".book-info");
                     els.forEach((el, i) => {
@@ -659,7 +659,7 @@
                         let ok = false;
                         for (let attempt = 1; attempt <= 10; attempt++) {
                             msg.innerHTML = `⚠️ Retry trang lỗi [${fi + 1}/${totalFailed}]${attempt > 1 ? ` — lần ${attempt}/10` : ""}... <span style="color:var(--wd-accent)">[Nghỉ ${(2 * attempt).toFixed(0)}s]</span>`;
-                            await new Promise((r) => setTimeout(r, 2000 * attempt));
+                            await new Promise((r) => setTimeout(r, 1000 * attempt));
                             try {
                                 const html = await fetch(url).then((r) => r.text());
                                 if (html && html.length > 0) {
