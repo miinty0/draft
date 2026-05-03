@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         Tool Manager
 // @namespace    http://tampermonkey.net/
-// @version      19
+// @version      20
+// @history      Thêm chức năng retry các trang lỗi (503) hoặc trả về rỗng, set limit số lượng trang được fetch
 // @description  Quản lý truyện
 // @author       Minty
 // @match        https://*.net/user/*/works*
@@ -38,9 +39,7 @@
                   .toLowerCase()
             : "";
     const getStoryId = (url) => {
-        try {
-            return decodeURIComponent(
-                url
+        try {return decodeURIComponent(url
                     .split(/[?#]/)[0]
                     .split("/")
                     .filter((p) => p)
@@ -201,7 +200,8 @@
                 }
                 const exists = await checkInDB(data.link);
                 if (exists) {
-                    const merged = { ...exists, ...data, chapter: data.realChapterCount };
+                    const { realChapterCount, ...dataToSave } = data;
+                    const merged = { ...exists, ...dataToSave, chapter: realChapterCount };
                     if (!merged.fanqieid && exists.fanqieid) merged.fanqieid = exists.fanqieid;
                     await db.putBulk([merged]);
                     showToast("💾 Đã cập nhật!");
@@ -346,7 +346,10 @@
             btn.onmouseover = () => (btn.style.transform = "scale(1.1) rotate(90deg)");
             btn.onmouseout = () => (btn.style.transform = "scale(1) rotate(0deg)");
             btn.onclick = async () => {
-                await db.putBulk([{ ...data, chapter: data.realChapterCount ?? -1 }]);
+                const allBooks = await db.getAll();
+                const maxOrder = allBooks.reduce((max, b) => Math.max(max, b.order ?? 0), 0);
+                const { realChapterCount, ...dataToAdd } = data;
+                await db.putBulk([{ ...dataToAdd, chapter: realChapterCount ?? -1, order: maxOrder + 1 }]);
                 showToast(`✅ Đã thêm`);
                 syncChannel.postMessage({ type: "REFRESH" });
                 btn.style.opacity = "0";
@@ -369,8 +372,13 @@
         const panel = document.createElement("div");
         panel.id = "wd-panel";
         panel.className = "wd-minimized";
-        panel.innerHTML = `<div id="wd-header"><span class="wd-title-text">🗃️ TOOL MANAGER</span><div class="wd-actions"><button id="wd-theme-toggle" class="wd-icon-btn" title="Giao diện">☀️</button><button id="wd-minimize-btn" class="wd-icon-btn" title="Thu nhỏ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div></div><div id="wd-body"><div class="wd-grid-row"><div class="wd-input-wrap"><span class="wd-input-icon">⚡</span><input type="number" id="wd-cfg-batch" class="wd-input" value="5" min="1" max="10"title="Max random số trang tải cùng lúc. VD: số 5 thì random lúc tải 1 trang, lúc tải max 5 trang"></div><div class="wd-input-wrap"><span class="wd-input-icon">⏳</span><input type="number" id="wd-cfg-delay" class="wd-input" value="1000" step="500"title="Thời gian nghỉ (ms). 1000ms là nghỉ 1s giữa mỗi lượt tải"></div></div><div class="wd-row"><button id="wd-sync-btn" class="wd-btn" style="flex-grow:1;">🔄 ĐỒNG BỘ</button><button id="wd-clear-all-btn" class="wd-btn danger" style="width: 44px;" title="Xoá sạch">🗑️</button></div><div class="wd-row"><button id="wd-export-btn" class="wd-io-btn" style="flex:1">📤 XUẤT</button><button id="wd-import-btn" class="wd-io-btn" style="flex:1">📥 NHẬP</button><button id="wd-help-btn" class="wd-io-btn" style="width:30px;padding:0" title="Hướng dẫn">❓</button></div><div class="wd-toggle-wrapper" id="wd-setting-wrapper"title="Nếu tắt, script sẽ không tự động cập nhật truyện tag Hoàn thành đã lưu trong kho, giúp tiết kiệm năng lượng"><span>Tự động cập nhật truyện tag Hoàn thành</span><label class="wd-toggle"><input type="checkbox" id="wd-setting-autoupdate"><span class="wd-slider"></span></label></div><div id="wd-status-msg" style="text-align:center;font-size:11px;color:var(--wd-text-sub);margin-bottom:2px;font-style:italic;">Sẵn sàng.</div><div id="wd-today-stats" style="text-align:center;font-size:11px;color:var(--wd-accent);margin-bottom:8px;font-weight:600;"></div><input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tìm tên truyện..."><div class="wd-row"><div class="wd-col"><select id="wd-filter-status" class="wd-select browser-default"><option value="all">Tất cả</option><option value="Còn tiếp">Còn tiếp</option><option value="Hoàn thành">Hoàn thành</option><option value="Tạm ngưng">Tạm ngưng</option><option value="Chưa xác minh">Chưa xác minh</option></select></div><div class="wd-col"><select id="wd-sort" class="wd-select browser-default"><option value="newest">🆕 Mới nhất</option><option value="oldest">🦖 Cũ nhất</option><option value="view">👀 Lượt xem</option><option value="rating">⭐ Đánh giá</option><option value="comment">💬 Bình luận</option><option value="thanks">🩷 Cảm ơn</option></select></div></div><div class="wd-row" style="margin-bottom:0;"><input type="date" id="wd-date-from" class="wd-input" style="margin:0" title="Từ ngày"><input type="date" id="wd-date-to" class="wd-input" style="margin:0" title="Đến ngày"></div><div id="wd-result-list"></div></div>`;
+        panel.innerHTML = `<div id="wd-header"><span class="wd-title-text">🗃️ TOOL MANAGER</span><div class="wd-actions"><button id="wd-theme-toggle" class="wd-icon-btn" title="Giao diện">☀️</button><button id="wd-minimize-btn" class="wd-icon-btn" title="Thu nhỏ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div></div><div id="wd-body"><div class="wd-grid-row"><div class="wd-input-wrap"><span class="wd-input-icon">⚡</span><input type="number" id="wd-cfg-batch" class="wd-input" value="10" min="1" max="10"title="Max random số trang tải cùng lúc. VD: số 5 thì random lúc tải 1 trang, lúc tải max 5 trang"></div><div class="wd-input-wrap"><span class="wd-input-icon">⏳</span><input type="number" id="wd-cfg-delay" class="wd-input" value="1000" step="500"title="Thời gian nghỉ (ms). 1000ms là nghỉ 1s giữa mỗi lượt tải"></div></div><div class="wd-row"><button id="wd-sync-btn" class="wd-btn" style="flex-grow:1;">🔄 ĐỒNG BỘ</button><button id="wd-clear-all-btn" class="wd-btn danger" style="width: 44px;" title="Xoá sạch">🗑️</button></div><div class="wd-row"><button id="wd-export-btn" class="wd-io-btn" style="flex:1">📤 XUẤT</button><button id="wd-import-btn" class="wd-io-btn" style="flex:1">📥 NHẬP</button><button id="wd-help-btn" class="wd-io-btn" style="width:30px;padding:0" title="Hướng dẫn">❓</button></div><div class="wd-toggle-wrapper" id="wd-setting-wrapper"title="Nếu tắt, script sẽ không tự động cập nhật truyện tag Hoàn thành đã lưu trong kho, giúp tiết kiệm năng lượng"><span>Tự động cập nhật truyện tag Hoàn thành</span><label class="wd-toggle"><input type="checkbox" id="wd-setting-autoupdate"><span class="wd-slider"></span></label></div><div id="wd-status-msg" style="text-align:center;font-size:11px;color:var(--wd-text-sub);margin-bottom:2px;font-style:italic;">Sẵn sàng.</div><div id="wd-today-stats" style="text-align:center;font-size:11px;color:var(--wd-accent);margin-bottom:8px;font-weight:600;"></div><input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tìm tên truyện..."><div class="wd-row"><div class="wd-col"><select id="wd-filter-status" class="wd-select browser-default"><option value="all">Tất cả</option><option value="Còn tiếp">Còn tiếp</option><option value="Hoàn thành">Hoàn thành</option><option value="Tạm ngưng">Tạm ngưng</option><option value="Chưa xác minh">Chưa xác minh</option></select></div><div class="wd-col"><select id="wd-sort" class="wd-select browser-default"><option value="newest">🆕 Mới nhất</option><option value="oldest">🦖 Cũ nhất</option><option value="view">👀 Lượt xem</option><option value="rating">⭐ Đánh giá</option><option value="comment">💬 Bình luận</option><option value="thanks">🩷 Cảm ơn</option></select></div></div><div class="wd-row" style="margin-bottom:0;"><input type="date" id="wd-date-from" class="wd-input" style="margin:0" title="Từ ngày"><input type="date" id="wd-date-to" class="wd-input" style="margin:0" title="Đến ngày"></div><div id="wd-result-list"></div></div>`;
         document.body.appendChild(panel);
+        const batchInput = document.getElementById("wd-cfg-batch");
+        batchInput.addEventListener("change", () => {
+            const v = parseInt(batchInput.value) || 1;
+            batchInput.value = Math.min(10, Math.max(1, v));
+        });
         const chkAutoUpdate = document.getElementById("wd-setting-autoupdate");
         const toggleWrapper = document.getElementById("wd-setting-wrapper");
         chkAutoUpdate.checked = localStorage.getItem(AUTO_UPDATE_KEY) !== "false";
@@ -391,6 +399,7 @@
         exportBtn.onclick = async () => {
             const items = await db.getAll();
             if (items.length === 0) return showToast("⚠️ Không có dữ liệu để xuất");
+            items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             const jsonString = JSON.stringify(items, null, 4);
             const blob = new Blob([jsonString], { type: "text/plain" });
             const url = URL.createObjectURL(blob);
@@ -500,7 +509,7 @@
             }
         }
         async function syncData() {
-            const userBatchSize = parseInt(document.getElementById("wd-cfg-batch").value) || 5;
+            const userBatchSize = parseInt(document.getElementById("wd-cfg-batch").value) || 10));
             const userDelay = parseInt(document.getElementById("wd-cfg-delay").value) || 2000;
             const btn = document.getElementById("wd-sync-btn");
             const msg = document.getElementById("wd-status-msg");
@@ -530,57 +539,140 @@
                     });
                     if (starts.length > 0) maxStart = Math.max(...starts);
                 }
-                const processDoc = (doc) => {
+                // Đếm số truyện thực tế trên trang đầu
+                const firstPageCount = docFirst.querySelectorAll(".book-info").length;
+
+                // Fetch trang cuối để đếm số truyện thực tế (nếu chỉ có 1 trang thì trang đầu = trang cuối)
+                let lastPageCount = firstPageCount;
+                if (maxStart > 0) {
+                    try {
+                        const resLast = await fetch(`${base}?start=${maxStart}`);
+                        const htmlLast = await resLast.text();
+                        const docLast = new DOMParser().parseFromString(htmlLast, "text/html");
+                        lastPageCount = docLast.querySelectorAll(".book-info").length;
+                    } catch (e) {
+                        lastPageCount = 10; 
+                    }
+                }
+                const totalCount = maxStart + lastPageCount;
+                // pageStart = vị trí bắt đầu của trang trong danh sách tổng 
+                const processDoc = (doc, pageStart) => {
                     const els = doc.querySelectorAll(".book-info");
-                    els.forEach((el) => {
+                    els.forEach((el, i) => {
                         const b = extractListBookData(el);
                         if (b) {
+                            b.order = totalCount - (pageStart + i);
                             buffer.push(b);
                         }
                     });
                     return els.length;
                 };
-                processDoc(docFirst);
+                const fetchWithRetry = async (url, retries = 3) => {
+                    for (let attempt = 0; attempt < retries; attempt++) {
+                        try {
+                            const r = await fetch(url);
+                            const html = await r.text();
+                            if (html && html.length > 0) return html;
+                            throw new Error("Empty response");
+                        } catch (e) {
+                            if (attempt < retries - 1) {
+                                await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+                            } else {
+                                throw e;
+                            }
+                        }
+                    }
+                };
+                const flushBuffer = async () => {
+                    if (buffer.length === 0) return;
+                    const merged = buffer.map((newBook) => {
+                        const existing = GLOBAL_CACHE.find((b) => b.id === newBook.id);
+                        if (existing) {
+                            if (existing.thanks > 0) newBook.thanks = existing.thanks;
+                            if (existing.fanqieid) newBook.fanqieid = existing.fanqieid;
+                        }
+                        return newBook;
+                    });
+                    await db.putBulk(merged);
+                    buffer = [];
+                };
+                // Xử lý và lưu trang đầu ngay lập tức
+                processDoc(docFirst, 0);
+                await flushBuffer();
                 let urlsToFetch = [];
                 for (let i = 10; i <= maxStart; i += 10) {
-                    urlsToFetch.push(`${base}?start=${i}`);
+                    urlsToFetch.push({ url: `${base}?start=${i}`, pageStart: i });
                 }
                 let currentIndex = 0;
+                let failedPages = [];
                 while (currentIndex < urlsToFetch.length) {
                     let currentBatchSize = Math.floor(Math.random() * userBatchSize) + 1;
                     if (currentIndex + currentBatchSize > urlsToFetch.length) {
                         currentBatchSize = urlsToFetch.length - currentIndex;
                     }
-                    const batchUrls = urlsToFetch.slice(currentIndex, currentIndex + currentBatchSize);
+                    const batchItems = urlsToFetch.slice(currentIndex, currentIndex + currentBatchSize);
                     const percent = Math.round((currentIndex / urlsToFetch.length) * 100);
                     msg.innerHTML = `${audioOK ? "🔊 " : ""}Đang tải: ${currentBatchSize} trang... (Tổng: ${percent}%)`;
                     btn.innerText = `⏳ ${percent}%`;
-                    const promises = batchUrls.map((url) => fetch(url).then((r) => r.text()));
-                    try {
-                        const responses = await Promise.all(promises);
-                        responses.forEach((html) => {
-                            processDoc(new DOMParser().parseFromString(html, "text/html"));
+                    const results = await Promise.allSettled(
+                        batchItems.map(({ url, pageStart }, i) =>
+                            fetchWithRetry(url).then((html) => {
+                                const doc = new DOMParser().parseFromString(html, "text/html");
+                                const count = doc.querySelectorAll(".book-info").length;
+                                if (count === 0) throw new Error("Empty page (0 items)");
+                                return { doc, pageStart, i };
+                            })
+                        )
+                    );
+                    results
+                        .filter((r) => r.status === "fulfilled")
+                        .sort((a, b) => a.value.i - b.value.i)
+                        .forEach(({ value: { doc, pageStart } }) => {
+                            processDoc(doc, pageStart);
                         });
-                        if (buffer.length > 0) {
-                            const merged = buffer.map((newBook) => {
-                                const existing = GLOBAL_CACHE.find((b) => b.id === newBook.id);
-                                if (existing && existing.thanks > 0) {
-                                    return { ...newBook, thanks: existing.thanks };
-                                }
-                                return newBook;
-                            });
-                            await db.putBulk(merged);
-                            buffer = [];
+                    results.forEach((r, i) => {
+                        if (r.status === "rejected") {
+                            failedPages.push(batchItems[i]);
+                            console.warn(`Trang lỗi (sẽ retry sau): ${batchItems[i].url} —`, r.reason?.message);
                         }
-                    } catch (err) {
-                        console.error("Lỗi tải batch:", err);
-                    }
+                    });
+                    await flushBuffer();
                     currentIndex += currentBatchSize;
                     if (currentIndex < urlsToFetch.length) {
                         const jitter = userDelay * 0.3;
                         const randomDelay = userDelay + (Math.random() * jitter * 2 - jitter);
                         msg.innerHTML += ` <span style="color:var(--wd-accent)">[Nghỉ ${(randomDelay / 1000).toFixed(1)}s]</span>`;
                         await new Promise((r) => setTimeout(r, randomDelay));
+                    }
+                }
+                // Retry các trang lỗi, mỗi trang retry thêm 5 lần với delay tăng dần
+                if (failedPages.length > 0) {
+                    const totalFailed = failedPages.length;
+                    for (let fi = 0; fi < failedPages.length; fi++) {
+                        const { url, pageStart } = failedPages[fi];
+                        let ok = false;
+                        for (let attempt = 1; attempt <= 10; attempt++) {
+                            msg.innerHTML = `⚠️ Retry trang lỗi [${fi + 1}/${totalFailed}]${attempt > 1 ? ` — lần ${attempt}/10` : ""}... <span style="color:var(--wd-accent)">[Nghỉ ${(2 * attempt).toFixed(0)}s]</span>`;
+                            await new Promise((r) => setTimeout(r, 2000 * attempt));
+                            try {
+                                const html = await fetch(url).then((r) => r.text());
+                                if (html && html.length > 0) {
+                                    const doc = new DOMParser().parseFromString(html, "text/html");
+                                    const count = doc.querySelectorAll(".book-info").length;
+                                    if (count === 0) throw new Error("Empty page (0 items)");
+                                    processDoc(doc, pageStart);
+                                    await flushBuffer();
+                                    ok = true;
+                                    msg.innerHTML = `✅ Retry trang lỗi [${fi + 1}/${totalFailed}] — thành công!`;
+                                    break;
+                                }
+                            } catch (e) {
+                                if (attempt === 10) {
+                                    msg.innerHTML = `❌ Bỏ qua trang [${fi + 1}/${totalFailed}] sau 10 lần retry`;
+                                }
+                            }
+                        }
+                        if (!ok) console.error(`Bỏ qua hẳn sau 10 lần retry: ${url}`);
                     }
                 }
             } catch (e) {
