@@ -4,7 +4,7 @@
 // @version      1.4
 // @description  Tự động expand hết các review trên Wiki và posts trên forum
 // @author       Miinty
-// @match        https://wikicv.net/review*
+// @match        https://*.net/review*
 // @match        https://forum.dichtienghoa.com/*
 // @grant        none
 // @run-at       document-idle
@@ -14,28 +14,23 @@
     'use strict';
 
     // Hàm expand cho Wiki
-    function expandWikiCVReviews() {
+    function expandWikiReviews() {
         // Tìm tất cả nút "Xem thêm"
         const readmoreButtons = document.querySelectorAll('[data-readmore-toggle]');
-
         console.log(`[Wiki] Tìm thấy ${readmoreButtons.length} nút "Xem thêm"`);
-
         readmoreButtons.forEach(button => {
             const targetId = button.getAttribute('data-readmore-toggle');
             const contentBox = document.getElementById(targetId);
-
             if (contentBox) {
                 // Xóa giới hạn chiều cao
                 contentBox.style.maxHeight = 'none';
                 contentBox.style.height = 'auto';
                 contentBox.setAttribute('aria-expanded', 'true');
-
                 // Ẩn nút "Xem thêm"
                 button.style.display = 'none';
             }
         });
     }
-
     // Hàm expand cho Forum
     function expandForumPosts() {
         const posts = document.querySelectorAll('[component="post/content"]');
@@ -64,7 +59,7 @@
         console.log(`[Auto Expand] Checking page: ${pathname}`);
 
         if (hostname === 'wikicv.net') {
-            expandWikiCVReviews();
+            expandWikiReviews();
         } else if (hostname === 'forum.dichtienghoa.com') {
             expandForumPosts();
         }
