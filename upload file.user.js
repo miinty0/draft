@@ -159,7 +159,7 @@
                 <polyline points="13 2 13 9 20 9"/>
             </svg>
         `,Y.appendChild(e),document.createElement("span"));A.textContent="Chọn file",A.style.color="white",Y.appendChild(A),Y.onmouseover=()=>{Y.style.background="#153f7a",Y.style.borderColor="#153f7a",Y.style.transform="translateY(-1px)",Y.style.boxShadow="0 4px 12px rgba(26,86,161,0.5)"},Y.onmouseout=()=>{Y.style.background="#1C75E1",Y.style.borderColor="none",Y.style.transform="translateY(0)",Y.style.boxShadow="0 2px 8px rgba(26,86,161,0.4)"},P.appendChild(Y);(function(){var w=document.createElement("div");w.style.cssText="margin-top:6px;margin-bottom:8px;";var lb=document.createElement("div");lb.textContent="Tên chương lấy từ:";lb.style.cssText="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px;";w.appendChild(lb);var row=document.createElement("div");row.style.cssText="display:flex;gap:6px;";var btns={};[{val:"firstLine",label:"📄 Dòng đầu file"},{val:"fileName",label:"📝 Tên file"}].forEach(function(opt){var btn=document.createElement("button");btn.type="button";btn.textContent=opt.label;btn.dataset.val=opt.val;var active=opt.val==="fileName";btn.style.cssText="flex:1;padding:8px 10px;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;transition:all 0.18s;border:2px solid "+(active?"#7952b3":"#d6cfc4")+";background:"+(active?"#7952b3":"#ffffff")+";color:"+(active?"#ffffff":"#374151")+";box-shadow:"+(active?"0 2px 6px rgba(121,82,179,0.28)":"none")+";";btn.addEventListener("click",function(){nameSource=opt.val;Object.keys(btns).forEach(function(k){var b=btns[k],on=k===opt.val;b.style.background=on?"#7952b3":"#ffffff";b.style.color=on?"#ffffff":"#374151";b.style.borderColor=on?"#7952b3":"#d6cfc4";b.style.boxShadow=on?"0 2px 6px rgba(121,82,179,0.28)":"none";b.style.transform=on?"translateY(-1px)":"translateY(0)";});});btn.addEventListener("mouseenter",function(){if(nameSource!==opt.val)btn.style.background="#f3f0f8";});btn.addEventListener("mouseleave",function(){if(nameSource!==opt.val)btn.style.background="#ffffff";});btns[opt.val]=btn;row.appendChild(btn);});w.appendChild(row);P.appendChild(w);})();const K=document.createElement("div"),ze=(K.style.cssText="color: #374151; font-size: 13px; margin-top: 6px; margin-bottom: 6px; display: none; padding-left: 4px;",P.appendChild(K),document.createElement("div"));ze.style.cssText="display: none; max-height: 150px; overflow-y: auto; background: #f8f9fa; border: 1px solid #d6cfc4; border-radius: 4px; padding: 8px; margin-bottom: 6px; font-size: 12px;",P.appendChild(ze);// Helper: extract txt files from zip
-// Parse ZIP thuần túy không dùng JSZip (JSZip.entry.async bị block trong Tampermonkey sandbox)
+// Parse ZIP
 async function _decompressDeflate(compressedBytes){
     const ds=new DecompressionStream("deflate-raw");
     const writer=ds.writable.getWriter();
@@ -190,7 +190,7 @@ async function _extractTxtFromZip(zipFile){
     const files=[];
     let i=0;
     while(i<buf.length-4){
-        // Local file header signature = 0x04034b50
+        // Local file header signature
         if(view.getUint32(i,true)!==0x04034b50){i++;continue;}
         const compression=view.getUint16(i+8,true);
         const compressedSize=view.getUint32(i+18,true);
@@ -211,7 +211,7 @@ async function _extractTxtFromZip(zipFile){
         }else if(compression===8){
             rawBytes=await _decompressDeflate(compressedData);
         }else{
-            continue; // compression method không hỗ trợ
+            continue; 
         }
         const blob=new Blob([rawBytes],{type:"text/plain"});
         files.push(new File([blob],baseName,{type:"text/plain"}));
@@ -219,7 +219,7 @@ async function _extractTxtFromZip(zipFile){
     files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}));
     return files;
 }
-// Helper: extract chapter title from filename (strip leading digits/underscores)
+// Helper: extract chapter title from filename
 function _chapterTitleFromFile(f){
     return f.name.replace(/\.txt$/i,"").replace(/^\d+[_\-\s]*/,"").trim();
 }
@@ -232,8 +232,7 @@ $.addEventListener("change",async e=>{
         K.textContent="⏳ Đang giải nén ZIP...";
         K.style.cssText="color:#856404;font-size:13px;margin-top:6px;margin-bottom:6px;display:block;font-weight:600;padding-left:4px;";
         try{
-            // Khởi động TẤT CẢ FileReader song song NGAY LẬP TỨC (không await trước)
-            // để tránh SecurityError do user activation timeout
+            // Khởi động FileReader 
             const zipPromises=zipFiles.map(zf=>_extractTxtFromZip(zf));
             const results=await Promise.all(zipPromises);
             results.forEach(extracted=>{txtFiles=txtFiles.concat(extracted);});
@@ -260,7 +259,7 @@ $.addEventListener("change",async e=>{
     }
     ze.style.display="none";
 });
-// ── Range load UI ─────────────────────────────────────────────────────
+// Range load UI
 const rangeContainer=document.createElement("div");
 rangeContainer.style.cssText="display:none;margin-bottom:8px;padding:8px;background:#f0f4ff;border:1.5px solid #c3d4f8;border-radius:8px;box-sizing:border-box;";
 const rangeLbl=document.createElement("div");
@@ -274,7 +273,7 @@ rangeFromLbl.textContent="Từ:";
 rangeFromLbl.style.cssText="font-size:12px;color:#374151;font-weight:600;white-space:nowrap;min-width:24px;";
 const rangeFromInput=document.createElement("input");
 rangeFromInput.type="text";
-rangeFromInput.placeholder="Tên chương đầu (VD: 第420章 掉河里了)";
+rangeFromInput.placeholder="Tên chương đầu";
 rangeFromInput.style.cssText="flex:1;padding:6px 8px;font-size:12px;border:1.5px solid #c3d4f8;border-radius:6px;outline:none;box-sizing:border-box;";
 rangeFromInput.addEventListener("focus",()=>{rangeFromInput.style.borderColor="#1C75E1";});
 rangeFromInput.addEventListener("blur",()=>{rangeFromInput.style.borderColor="#c3d4f8";});
@@ -288,7 +287,7 @@ rangeToLbl.textContent="Đến:";
 rangeToLbl.style.cssText="font-size:12px;color:#374151;font-weight:600;white-space:nowrap;min-width:24px;";
 const rangeToInput=document.createElement("input");
 rangeToInput.type="text";
-rangeToInput.placeholder="Tên chương cuối (VD: 第422章 骗牛妞去打针)";
+rangeToInput.placeholder="Tên chương cuối";
 rangeToInput.style.cssText="flex:1;padding:6px 8px;font-size:12px;border:1.5px solid #c3d4f8;border-radius:6px;outline:none;box-sizing:border-box;";
 rangeToInput.addEventListener("focus",()=>{rangeToInput.style.borderColor="#1C75E1";});
 rangeToInput.addEventListener("blur",()=>{rangeToInput.style.borderColor="#c3d4f8";});
@@ -447,11 +446,11 @@ rangeApplyBtn.onclick=()=>{
             box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
         `,P.appendChild(ee),Se.appendChild(P),document.createElement("div"));te.style.cssText="display: none; width: 100%; padding-bottom: 10px;";Se.appendChild(te);
 
-// ── Giới thiệu / Dịch Tab ─────────────────────────────────────────────
+// Giới thiệu / Dịch Tab 
 const TransTabContainer = document.createElement("div");
 TransTabContainer.style.cssText = "display:none;width:100%;padding-bottom:10px;box-sizing:border-box;";
 
-// ── Ảnh bìa Tab ──────────────────────────────────────────────────────────────
+// Ảnh bìa Tab
 const CoverTabContainer = (function(){
     const wrap = document.createElement("div");
     wrap.style.cssText = "display:none;width:100%;padding-bottom:10px;";
@@ -494,7 +493,7 @@ const CoverTabContainer = (function(){
     const coverDirLabel = document.createElement("span");
     coverDirLabel.style.cssText = "font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;";
     coverDirLabel.textContent = "Chưa chọn thư mục";
-    // ── IndexedDB helpers để lưu/khôi phục FileSystemDirectoryHandle ──
+    // IndexedDB helpers để lưu/khôi phục FileSystemDirectoryHandle ──
     const _DB_NAME = "WikiToolsDB";
     const _DB_STORE = "handles";
     const _DB_KEY   = "coverDirHandle";
@@ -676,7 +675,7 @@ const CoverTabContainer = (function(){
         coverStatus.innerHTML = `<strong>File gốc:</strong> ${_origFile.name} — ${formatSize(_origFile.size)}<br>
             <strong style="color:#399F49">✔ Đã nén:</strong> ${_compressedName} — ${formatSize(found.size)} (chất lượng ${foundQuality}%)`;
 
-        // Save file – prefer File System Access API (saves to chosen folder)
+        // Save file – prefer File System Access API
         let saved = false;
         if(window._coverDirHandle){
             try{
@@ -706,7 +705,7 @@ Se.appendChild(CoverTabContainer);
 
 Se.appendChild(TransTabContainer);
 
-// ── helper: inject shared <style> once ──────────────────────────────
+// helper: inject shared <style> once 
 if (!document.getElementById("wt-trans-style")) {
     const _sty = document.createElement("style");
     _sty.id = "wt-trans-style";
@@ -755,14 +754,14 @@ if (!document.getElementById("wt-trans-style")) {
     document.head.appendChild(_sty);
 }
 
-// ── Globals for new panel (shared with translateTextAPI & autoFill) ────
+// Globals for new panel (shared with translateTextAPI & autoFill) 
 let _panelCnText = "";
 let _panelViText = "";
 let _panelHvText = "";
 let _panelWebCn  = "";
 let _panelWebVi  = "";
 
-// ── Helper: capitalize first letter of each sentence ────────────────
+// Helper: capitalize first letter of each sentence
 function _capSentences(txt){
     // Capitalize first letter after sentence-ending punctuation, newlines, and start of string
     let r = txt.replace(/(^\s*|[.!?…»\n]+\s*)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/gmu,
@@ -779,7 +778,7 @@ function _capInsideBrackets(txt){
 }
 function _capFull(txt){ return _capInsideBrackets(_capSentences(txt)); }
 
-// ── Mini sidebar in TransTab: just Web title row + "Mở panel" button ─
+// Mini sidebar in TransTab: just Web title row + "Mở panel" button ─
 (function(){
     // Web title row
     const _webCard = document.createElement("div");
@@ -863,7 +862,7 @@ function _capFull(txt){ return _capInsideBrackets(_capSentences(txt)); }
     window._getWebTitleViInput = () => webTitleViInput;
 })();
 
-// ── Translation API ──────────────────────────────────────────────────
+// Translation API ────────────────────
 const translateTextAPI = (text, tl = "vi") => {
     return new Promise((resolve, reject) => {
         if (!text || !text.trim()) return resolve("");
@@ -890,7 +889,7 @@ const translateTextAPI = (text, tl = "vi") => {
     });
 };
 
-// ── Main 3-column panel ──────────────────────────────────────────────
+// Main 3-column panel ────────────────
 (function(){
     // Inject styles — reuse shared wt-* classes, only add layout-specific overrides
     if (!document.getElementById("wt-panel3-style")) {
@@ -966,7 +965,7 @@ const translateTextAPI = (text, tl = "vi") => {
         document.head.appendChild(sty);
     }
 
-    // ── Overlay & Panel shell ────────────────────────────────────────
+    // Overlay & Panel shell ──────────
     const overlay = document.createElement("div");
     overlay.id = "wt-p3-overlay";
     overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove("active"); };
@@ -975,7 +974,7 @@ const translateTextAPI = (text, tl = "vi") => {
     panel.id = "wt-p3-panel";
     overlay.appendChild(panel);
 
-    // ── Header ───────────────────────────────────────────────────────
+    // Header ─────────────────────────
     const hdr = document.createElement("div");
     hdr.id = "wt-p3-header";
     hdr.innerHTML = `<h3>📝 Giới thiệu – Dịch & Điền Form</h3>`;
@@ -1008,14 +1007,14 @@ const translateTextAPI = (text, tl = "vi") => {
     hdr.appendChild(closeBtn);
     panel.appendChild(hdr);
 
-    // ── Body ─────────────────────────────────────────────────────────
+    // Body ───────────────────────────
     const body = document.createElement("div");
     body.id = "wt-p3-body";
     panel.appendChild(body);
 
-    // ════════════════════════════════════════════════════════════════
+    
     // COL 1 – Văn bản tiếng Trung (editable) + Web title row
-    // ════════════════════════════════════════════════════════════════
+    
     const col1 = document.createElement("div");
     col1.className = "wt-p3-col";
 
@@ -1077,9 +1076,7 @@ const translateTextAPI = (text, tl = "vi") => {
 
     body.appendChild(col1);
 
-    // ════════════════════════════════════════════════════════════════
     // COL 2 – Kết quả dịch (Việt / Hán Việt) readonly, editable after
-    // ════════════════════════════════════════════════════════════════
     const col2 = document.createElement("div");
     col2.className = "wt-p3-col";
 
@@ -1154,9 +1151,9 @@ const translateTextAPI = (text, tl = "vi") => {
 
     body.appendChild(col2);
 
-    // ════════════════════════════════════════════════════════════════
+    
     // COL 3 – Tìm & Thay thế + nút điền form
-    // ════════════════════════════════════════════════════════════════
+    
     const col3 = document.createElement("div");
     col3.className = "wt-p3-col";
     col3.style.overflow = "hidden";
@@ -1279,7 +1276,7 @@ const translateTextAPI = (text, tl = "vi") => {
 
     document.body.appendChild(overlay);
 
-    // ── Open panel function ───────────────────────────────────────────
+    // Open panel function ─────────────
     window._openTransPanel = function(cnText) {
         if (cnText !== undefined) {
             col1Ta.value = cnText;
@@ -1304,7 +1301,7 @@ const translateTextAPI = (text, tl = "vi") => {
     // Poll for web vi updates while panel is open
     overlay.addEventListener("animationstart", _syncWebVi);
 
-    // ── Translate (header button) ────────────────────────────────────
+    // Translate (header button) ──────
     hdrDichBtn.onclick = async () => {
         const cnText = col1Ta.value.trim();
         const webCn  = col1WebCnInput.value.trim();
@@ -1346,7 +1343,7 @@ const translateTextAPI = (text, tl = "vi") => {
         }
     };
 
-    // ── Auto Fill Form (header button) ──────────────────────────────
+    // Auto Fill Form (header button) 
     hdrFillBtn.onclick = () => {
         const cnText  = col1Ta.value;
         const viText  = col2TaVi.value;
