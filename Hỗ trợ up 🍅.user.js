@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hỗ trợ up 🍅 + Score Badge
 // @namespace    https://fanqienovel.com/
-// @version      4.0.0
+// @version      5.0
 // @description  Cuộn ngang, tải ảnh bìa, đánh dấu & quản lý list + Hiển thị badge điểm kế tựa đề
 // @author       Minty
 // @match        https://fanqienovel.com/*
@@ -385,6 +385,12 @@
                 border-color: #e5e7eb;
                 background: #f9fafb;
             }
+            .fq-badge-library.fq-na {
+                color: #9ca3af;
+                border-color: #d1d5db;
+                background: #f3f4f6;
+                font-style: italic;
+            }
         `;
         document.head.appendChild(mainStyle);
     }
@@ -557,9 +563,13 @@
     const API_BOOK = 'https://api5-normal-sinfonlinec.fqnovel.com/reading/user/share/info/v/';
     async function fetchScore(bookId) {
         const json = await fetchAPI(`${API_BOOK}?group_id=${bookId}&aid=1967&version_code=513`);
-        const score = json?.data?.book_info?.score ?? null;
-        return score != null ? parseFloat(score).toFixed(1) : null;
-    }    try { unsafeWindow.tmFetchScore = fetchScore; } catch(_) { window.tmFetchScore = fetchScore; }
+        const bookInfo = json?.data?.book_info;
+        if (!bookInfo) return null;          // book not found → N/A
+        const score = bookInfo.score;
+        if (score == null) return null;      // score field absent → N/A
+        return parseFloat(score).toFixed(1); // valid score, may be "0.0"
+    }
+    try { unsafeWindow.tmFetchScore = fetchScore; } catch(_) { window.tmFetchScore = fetchScore; }
     const CARD_SELECTORS = [
         '.stack-book-item',   // /library
         '.rank-book-item',    // /rank
@@ -612,22 +622,32 @@
 
             const badge = document.createElement('span');
             badge.className = 'fq-badge-library fq-loading';
-            badge.textContent = '⭐…';
+            badge.textContent = '⭐...';
             titleContainer.insertBefore(badge, titleContainer.firstChild);
 
             fetchScore(bookId)
                 .then(score => {
-                    if (score) { badge.className = 'fq-badge-library'; badge.textContent = '⭐' + score; }
-                    else badge.remove();
+                    if (score !== null) {
+                        badge.className = 'fq-badge-library';
+                        badge.textContent = '⭐' + score;
+                    } else {
+                        // null = book not found or score unavailable → N/A badge
+                        badge.className = 'fq-badge-library fq-na';
+                        badge.textContent = 'N/A';
+                        badge.title = 'Không tìm thấy điểm';
+                    }
                 })
-                .catch(() => badge.remove());
+                .catch(() => {
+                    badge.className = 'fq-badge-library fq-na';
+                    badge.textContent = 'N/A';
+                    badge.title = 'Lỗi tải điểm';
+                });
         });
 
         return injected;
     }
 
     // Gọi injectScoreBadges với retry tự động nếu DOM chưa sẵn sàng
-    // Backoff: 500ms → 1000ms → 1500ms → ... tối đa 3000ms, thử tối đa 8 lần (~14s tổng)
     function injectScoreBadgesWithRetry(attempts = 8, delay = 500) {
         clearTimeout(scoreBadgeRetryTimer);
         const result = injectScoreBadges();
