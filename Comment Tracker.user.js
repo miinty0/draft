@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Comment Tracker
-// @history      Sửa lỗi lấy N bình luận không đúng với yêu cầu do ghi đè, version mới này sẽ lấy hết các bình luận TRỪ khi bình luận cùng user cùng nội dung và cùng URL (aka spam)
+// @history      Group theo truyện với expand/collapse
 // @namespace    Minty
-// @version      3.0
+// @version      3.5
 // @description  Load, filter, and manage comment notifications
 // @match        *://*/user/*/binh-luan*
 // @grant        GM_getValue
@@ -20,7 +20,7 @@
   const saveStore   = a  => GM_setValue(STORE_KEY,  JSON.stringify(a));
   const loadMarks = () => { try { return JSON.parse(GM_getValue(MARK_KEY, '[]')); } catch { return []; } };
   const saveMarks = a  => GM_setValue(MARK_KEY, JSON.stringify(a));
-  //  SANITIZE 
+  //  SANITIZE
   // <img> có "thaonema" → [sticker], còn lại → [image]
   const BLOCK_TAGS = new Set(['p','div','blockquote','li','pre','h1','h2','h3','h4','h5','h6']);
   const ALLOWED_TAGS = new Set([    'b','strong','i','em','u','s','strike','del','ins','sup','sub','small','mark',
@@ -122,8 +122,14 @@
       const interval = parseFloat(art.querySelector('time[data-interval]')?.getAttribute('data-interval') ?? 0);
       const ts       = Date.now() - interval * 1000;
       const isUnread = art.classList.contains('red');
-      const id       = href.replace(/[^a-zA-Z0-9_-]/g, '_') || ('id_' + ts);
-      return { id, href, msg, msgHtml, ts, isUnread };
+      const headerSpans = art.querySelectorAll('.notification-header span');
+      const user       = headerSpans.length >= 1 ? headerSpans[0].textContent.trim() : '';
+      const storyTitle = headerSpans.length >= 2 ? headerSpans[1].textContent.trim() : '';
+      // id = user + href + ts (làm tròn giây) → unique cho mọi trường hợp
+      const tsRounded  = Math.round(ts / 1000);
+      const idRaw      = user + '|' + href + '|' + tsRounded;
+      const id         = idRaw.replace(/[^a-zA-Z0-9_|-]/g, '_');
+      return { id, href, msg, msgHtml, ts, isUnread, user, storyTitle };
     });
   }
   function getTotalPages(doc) {
@@ -175,7 +181,7 @@
     }
   }
   const baseUrl = () => location.href.split('?')[0];
-  //  KEEP-ALIVE AUDIO 
+  //  KEEP-ALIVE AUDIO
   let _audioCtx = null, _audioSrc = null;
   function startKeepAlive() {
     try {
@@ -222,7 +228,21 @@
       const articles = parseArticles(doc);
       if (!articles.length) break;
       for (const a of articles) {
-        if (mode === 'sync'  && newestMarkId && a.id === newestMarkId) { done = true; break; }
+        if (mode === 'sync' && newestMarkId) {
+          // So sánh đủ: user + chương (href) + thời gian (ts làm tròn giây) + nội dung
+          // để dừng đúng khi gặp lại đúng comment đã mark, tránh nhầm comment khác
+          const markedComment = store.find(c => c.id === newestMarkId);
+          if (markedComment) {
+            const sameUser  = a.user  === markedComment.user;
+            const sameHref  = a.href  === markedComment.href;
+            const sameTs    = Math.abs(a.ts - markedComment.ts) < 10000; // trong vòng 10 giây
+            const sameMsg   = a.msg   === markedComment.msg;
+            if (sameUser && sameHref && sameTs && sameMsg) { done = true; break; }
+          } else if (a.id === newestMarkId) {
+            // fallback cho comment cũ chưa có trường user
+            done = true; break;
+          }
+        }
         if (mode === 'hours' && a.ts < Date.now() - param * 3_600_000) { done = true; break; }
         collected.push(a);
         if (mode === 'count' && collected.length >= param)             { done = true; break; }
@@ -236,31 +256,14 @@
     return collected;
   }
   function mergeComments(existing, fresh) {
-    // map: id → comment
     const map = new Map(existing.map(c => [c.id, c]));
-    fresh.forEach(c => {
-      if (!map.has(c.id)) {
-        map.set(c.id, c);
-      } else {
-        const old = map.get(c.id);
-        if (old.msg === c.msg) {
-          map.set(c.id, c);
-        } else {
-          let suffix = 2;
-          let newId = `${c.id}_${suffix}`;
-          while (map.has(newId)) {
-            suffix++;
-            newId = `${c.id}_${suffix}`;
-          }
-          map.set(newId, { ...c, id: newId });
-        }
-      }
-    });
+    fresh.forEach(c => map.set(c.id, c));
     return [...map.values()].sort((a, b) => b.ts - a.ts);
   }
-  //  UI STATE 
-  let sortOrder = 'desc', searchQ = '';
-  //  STYLES 
+  //  UI STATE
+  let sortOrder = 'desc', searchQ = '', groupMode = false;
+  const collapsedGroups = new Set();
+  //  STYLES
   function injectStyles() {
     if (document.getElementById('wct-styles')) return;
     const s = document.createElement('style');
@@ -595,7 +598,13 @@
       #wct-panel .wct-goto {
         display: inline-flex !important; align-items: center !important; gap: 4px !important;
         font-size: 12px !important; color: #0078D4 !important; text-decoration: none !important;
-        cursor: pointer !important;
+        cursor: pointer !important; min-width: 0 !important; max-width: 65% !important;
+        overflow: hidden !important;
+      }
+      #wct-panel .wct-goto-label { flex-shrink: 0 !important; }
+      #wct-panel .wct-goto-title {
+        overflow: hidden !important; text-overflow: ellipsis !important;
+        white-space: nowrap !important; min-width: 0 !important;
       }
       #wct-panel .wct-goto:hover { color: #106EBE !important; text-decoration: underline !important; }
       #wct-panel .wct-item-foot {
@@ -660,6 +669,44 @@
       #wct-panel .wct-item-msg a {
         color: #0078D4 !important; text-decoration: underline !important;
       }
+
+      /* === GROUP === */
+      #wct-panel .wct-group { display: flex !important; flex-direction: column !important; gap: 4px !important; }
+      #wct-panel .wct-group-header {
+        all: unset !important;
+        display: flex !important; align-items: center !important; gap: 6px !important;
+        padding: 5px 8px !important; border-radius: 7px !important;
+        background: #F3F2F1 !important; cursor: pointer !important;
+        font-size: 12px !important; font-weight: 600 !important; color: #323130 !important;
+        user-select: none !important; pointer-events: auto !important;
+        border: 1px solid #E8E6E4 !important;
+        transition: background .12s !important;
+        box-sizing: border-box !important;
+      }
+      #wct-panel .wct-group-header:hover { background: #EDEBE9 !important; }
+      #wct-panel .wct-group-header.active { background: #EFF6FC !important; border-color: #C7E0F4 !important; color: #0078D4 !important; }
+      #wct-panel .wct-group-title {
+        flex: 1 !important; min-width: 0 !important;
+        overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+      }
+      #wct-panel .wct-group-count {
+        flex-shrink: 0 !important; font-size: 11px !important; font-weight: 500 !important;
+        color: #8a8886 !important; background: rgba(0,0,0,.06) !important;
+        padding: 1px 6px !important; border-radius: 8px !important;
+      }
+      #wct-panel .wct-group-header.active .wct-group-count { color: #0078D4 !important; background: rgba(0,120,212,.1) !important; }
+      #wct-panel .wct-group-chevron {
+        flex-shrink: 0 !important; transition: transform .2s !important; color: #8a8886 !important;
+      }
+      #wct-panel .wct-group-header.active .wct-group-chevron { color: #0078D4 !important; }
+      #wct-panel .wct-group-body {
+        display: flex !important; flex-direction: column !important; gap: 5px !important;
+        padding-left: 10px !important;
+        border-left: 2px solid #E8E6E4 !important;
+        margin-left: 4px !important;
+      }
+      #wct-panel .wct-group-body.wct-group-collapsed { display: none !important; }
+      #wct-panel #wct-group-btn.active { color: #0078D4 !important; background: rgba(0,120,212,.08) !important; }
       @keyframes wct-spin { to { transform: rotate(360deg); } }
       #wct-panel .wct-spin { animation: wct-spin .8s linear infinite !important; display: inline-block !important; }
     `;
@@ -791,6 +838,13 @@
             <button class="wct-seg active" data-order="desc">Mới nhất</button>
             <button class="wct-seg" data-order="asc">Cũ nhất</button>
           </div>
+          <button id="wct-group-btn" class="wct-btn icon-only" title="Nhóm theo truyện">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="2" width="12" height="2.5" rx="1" fill="currentColor" opacity=".4"/>
+              <rect x="3" y="5.5" width="10" height="2" rx="1" fill="currentColor" opacity=".65"/>
+              <rect x="3" y="8.5" width="10" height="2" rx="1" fill="currentColor" opacity=".65"/>
+            </svg>
+          </button>
           <button id="wct-goto-mark-btn" class="wct-hidden" title="Cuộn đến mark mới nhất">🔖</button>
           <input id="wct-search" type="text" placeholder="Tìm kiếm…" class="wct-search"/>
         </div>
@@ -806,7 +860,43 @@
     checkUnreadAlert();
     makeDraggable(panel, panel.querySelector('#wct-titlebar'));
   }
-  //  RENDER 
+  //  RENDER
+  function makeCommentEl(c, marks) {
+    const isMark  = marks.includes(c.id);
+    const div     = document.createElement('div');
+    div.className = 'wct-item' + (c.isUnread ? ' unread' : '') + (isMark ? ' marked' : '');
+    div.dataset.itemId = c.id;
+    const fullUrl = c.href.startsWith('http') ? c.href : location.origin + c.href;
+    const msgContent = c.msgHtml != null ? c.msgHtml : escHtml(c.msg);
+    div.innerHTML = `
+      <div class="wct-item-head">
+        <span class="wct-item-time">${fmtTime(c.ts)}</span>
+        ${c.isUnread ? '<span class="wct-pill unread">● Chưa đọc</span>' : ''}
+        ${isMark    ? '<span class="wct-pill marked">🔖 Mark</span>' : ''}
+      </div>
+      <div class="wct-item-msg">${msgContent}</div>
+      <div class="wct-item-foot">
+        <a class="wct-goto" href="${escHtml(fullUrl)}" target="_blank" rel="noopener">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0!important">
+            <path d="M4.5 2H2.5A1.5 1.5 0 001 3.5v6A1.5 1.5 0 002.5 11h6A1.5 1.5 0 0010 9.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <path d="M6.5 1.5H10.5V5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <span class="wct-goto-label">Mở</span>${c.storyTitle ? ` - <span class="wct-goto-title">${escHtml(c.storyTitle)}</span>` : ''}
+        </a>
+        <button class="wct-mark-btn${isMark ? ' active' : ''}" data-id="${escHtml(c.id)}" title="${isMark ? 'Bỏ mark' : 'Đặt mark'}">
+          🔖 ${isMark ? 'Bỏ mark' : 'Mark'}
+        </button>
+      </div>
+    `;
+    div.querySelector('.wct-mark-btn').addEventListener('click', () => {
+      const cur    = loadMarks();
+      const marked = cur.includes(c.id);
+      saveMarks(marked ? cur.filter(id => id !== c.id) : [...cur, c.id]);
+      renderList(loadStore());
+    });
+    return div;
+  }
   function renderList(comments) {
     const list    = document.getElementById('wct-list');
     const stats   = document.getElementById('wct-stats');
@@ -818,9 +908,10 @@
     let items = [...comments];
     if (searchQ) {
       const q = searchQ.toLowerCase();
-      items = items.filter(c => c.msg.toLowerCase().includes(q) || c.href.toLowerCase().includes(q));
+      items = items.filter(c => c.msg.toLowerCase().includes(q) || c.href.toLowerCase().includes(q) || (c.storyTitle||'').toLowerCase().includes(q));
     }
-    if (sortOrder === 'asc') items.reverse();
+    // Sort flat list (desc = newest first; store is always desc by default)
+    items.sort((a, b) => sortOrder === 'asc' ? a.ts - b.ts : b.ts - a.ts);
     const hasMarkInView = items.some(c => marks.includes(c.id));
     if (gotoBtn) gotoBtn.classList.toggle('wct-hidden', !hasMarkInView);
     if (stats) {
@@ -832,42 +923,58 @@
       list.innerHTML = '<div class="wct-empty">Không có bình luận nào</div>';
       return;
     }
+    if (!groupMode) {
+      for (const c of items) list.appendChild(makeCommentEl(c, marks));
+      return;
+    }
+    // GROUP MODE
+    const groupMap = new Map();
     for (const c of items) {
-      const isMark  = marks.includes(c.id);
-      const div     = document.createElement('div');
-      div.className = 'wct-item' + (c.isUnread ? ' unread' : '') + (isMark ? ' marked' : '');
-      div.dataset.itemId = c.id;
-      const fullUrl = c.href.startsWith('http') ? c.href : location.origin + c.href;
-      const msgContent = c.msgHtml != null ? c.msgHtml : escHtml(c.msg);
-      div.innerHTML = `
-        <div class="wct-item-head">
-          <span class="wct-item-time">${fmtTime(c.ts)}</span>
-          ${c.isUnread ? '<span class="wct-pill unread">● Chưa đọc</span>' : ''}
-          ${isMark    ? '<span class="wct-pill marked">🔖 Mark</span>' : ''}
-        </div>
-        <div class="wct-item-msg">${msgContent}</div>
-        <div class="wct-item-foot">
-          <a class="wct-goto" href="${escHtml(fullUrl)}" target="_blank" rel="noopener">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M4.5 2H2.5A1.5 1.5 0 001 3.5v6A1.5 1.5 0 002.5 11h6A1.5 1.5 0 0010 9.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-              <path d="M6.5 1.5H10.5V5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            </svg>
-            Mở trang
-          </a>
-          <button class="wct-mark-btn${isMark ? ' active' : ''}" data-id="${escHtml(c.id)}" title="${isMark ? 'Bỏ mark' : 'Đặt mark'}">
-            🔖 ${isMark ? 'Bỏ mark' : 'Mark'}
-          </button>
-        </div>
+      const key = c.storyTitle || '(Không rõ truyện)';
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key).push(c);
+    }
+    const groups = [...groupMap.entries()];
+    const chevronSvg = `<svg class="wct-group-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M2.5 4l2.5 2.5L7.5 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+    for (const [title, groupItems] of groups) {
+      const hasUnread = groupItems.some(c => c.isUnread);
+      const hasMark   = groupItems.some(c => marks.includes(c.id));
+      const isCollapsed = collapsedGroups.has(title);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'wct-group';
+      const header = document.createElement('button');
+      header.className = 'wct-group-header' + (isCollapsed ? '' : ' active');
+      header.innerHTML = `
+        ${chevronSvg}
+        <span class="wct-group-title">${escHtml(title)}</span>
+        ${hasUnread ? '<span class="wct-pill unread" style="font-size:10px!important;padding:1px 5px!important">● Chưa đọc</span>' : ''}
+        ${hasMark   ? '<span class="wct-pill marked" style="font-size:10px!important;padding:1px 5px!important">🔖</span>' : ''}
+        <span class="wct-group-count">${groupItems.length}</span>
       `;
-      // Toggle mark
-      div.querySelector('.wct-mark-btn').addEventListener('click', () => {
-        const cur    = loadMarks();
-        const marked = cur.includes(c.id);
-        saveMarks(marked ? cur.filter(id => id !== c.id) : [...cur, c.id]);
-        renderList(loadStore());
+      const chevEl = header.querySelector('.wct-group-chevron');
+      if (isCollapsed) chevEl.style.setProperty('transform', 'rotate(-90deg)', 'important');
+      const body = document.createElement('div');
+      body.className = 'wct-group-body' + (isCollapsed ? ' wct-group-collapsed' : '');
+      for (const c of groupItems) body.appendChild(makeCommentEl(c, marks));
+      header.addEventListener('click', () => {
+        const nowCollapsed = collapsedGroups.has(title);
+        if (nowCollapsed) {
+          collapsedGroups.delete(title);
+          header.classList.add('active');
+          body.classList.remove('wct-group-collapsed');
+          chevEl.style.removeProperty('transform');
+        } else {
+          collapsedGroups.add(title);
+          header.classList.remove('active');
+          body.classList.add('wct-group-collapsed');
+          chevEl.style.setProperty('transform', 'rotate(-90deg)', 'important');
+        }
       });
-      list.appendChild(div);
+      wrapper.appendChild(header);
+      wrapper.appendChild(body);
+      list.appendChild(wrapper);
     }
   }
   function checkUnreadAlert() {
@@ -886,7 +993,7 @@
     const hintEl = document.getElementById('wct-mark-hint');
     if (hintEl) hintEl.classList.toggle('wct-hidden', loadStore().length === 0 || loadMarks().length > 0);
   }
-  //  EVENTS 
+  //  EVENTS
   function bindEvents(panel) {
     panel.querySelector('#wct-collapse-btn').addEventListener('click', () => {
       panel.classList.toggle('wct-collapsed');
@@ -1063,13 +1170,23 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
         renderList(loadStore());
       });
     });
+    // Group toggle
+    const groupBtn = panel.querySelector('#wct-group-btn');
+    if (groupBtn) {
+      groupBtn.addEventListener('click', () => {
+        groupMode = !groupMode;
+        groupBtn.classList.toggle('active', groupMode);
+        groupBtn.title = groupMode ? 'Tắt nhóm theo truyện' : 'Nhóm theo truyện';
+        renderList(loadStore());
+      });
+    }
     // Search
     panel.querySelector('#wct-search').addEventListener('input', e => {
       searchQ = e.target.value.trim();
       renderList(loadStore());
     });
   }
-  //  DRAG 
+  //  DRAG
   function makeDraggable(el, handle) {
     let ox = 0, oy = 0, sx = 0, sy = 0;
     handle.addEventListener('mousedown', e => {
@@ -1087,6 +1204,6 @@ if (!confirm(`Xoá bình luận và giữ các mark hiện tại?`)) return;
   //  UTILS
   const fmtTime = ts => new Date(ts).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
   const escHtml = s  => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  //  INIT 
+  //  INIT
   buildPanel();
 })();
