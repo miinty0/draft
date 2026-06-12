@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.0
+// @version      1.1
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   // AUTO-FILL DATA
-  const isWikicv = location.hostname === 'wikicv.net/truyen/';
+const isWikicv = location.hostname === 'wikicv.net' && location.pathname.startsWith('/truyen/');
   let autoFill = { storyUrl: '', storyName: '', latestChapter: '', managers: '' };
   if (isWikicv) {
     autoFill.storyUrl = window.location.href;
