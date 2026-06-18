@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.1
+// @version      1.2
+// @history      thêm field Link bản nhúng mới cho các đơn bị thiếu
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -604,10 +605,10 @@ function validateDateField(val) {
       const f = don.fields || {};
       // Which fields to show per form type
       const FORM_FIELDS = {
-        '1601': ['storyUrl','banNhungTrung','muc','currentVersion','giaiThich','choTaiRaw'],
+        '1601': ['storyUrl','banNhungTrung','muc','currentVersion','giaiThich','linkBanNhung','choTaiRaw'],
         '1602': ['storyUrl','banNhungTrung','managers','muc','currentVersion','soRawNum','soRawChapName','giaiThich','linkBanNhung','choTaiRaw'],
         '1603': ['storyUrl','banNhungTrung','managers','muc','currentVersion','linkGoc','ngayCapNhat','soChuongGoc','soRawNum','soRawChapName','giaiThich','linkBanNhung','choTaiRaw'],
-        '1604': ['storyUrl','banNhungTrung','muc','currentVersion','giaiThich','choTaiRaw'],
+        '1604': ['storyUrl','banNhungTrung','muc','currentVersion','giaiThich','linkBanNhung','choTaiRaw'],
         '1605': ['storyUrl','banNhungTrung','muc','currentVersion','soRawNum','soRawChapName','giaiThich','linkBanNhung','choTaiRaw'],
       };
       const fieldKeys = FORM_FIELDS[editFormType] || Object.keys(FIELD_LABELS);
@@ -916,6 +917,7 @@ function validateDateField(val) {
       addField('Xin xóa theo mục:', 'muc', selectedMuc ? selectedMuc : '');
       addField('Bản nhúng đang có:', 'currentVersion', af.latestChapter);
       container.appendChild(makeGiaiThich(true));
+      container.appendChild(makeLinkField());
       addField('Chỗ tải raw:', 'choTaiRaw');
     }
     if (subTabId === '1602') {
@@ -1017,6 +1019,7 @@ function validateDateField(val) {
       });
       giaiThichWrap.appendChild(radioGroup);
       container.appendChild(giaiThichWrap);
+      container.appendChild(makeLinkField());
       addField('Chỗ tải raw:', 'choTaiRaw');
     }
     if (subTabId === '1605') {
