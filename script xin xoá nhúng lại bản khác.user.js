@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.2
-// @history      thêm field Link bản nhúng mới cho các đơn bị thiếu
+// @version      1.3
+// @history      fix: sửa đơn đã lưu đổi sang loại 1604 giờ hiện đủ option A/B/C cho giải thích thêm, dropdown i hiện đúng trên wiki
+// @history      new: thêm nút i trong panel sửa đơn đã lưu, thêm mục s mới
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -248,6 +249,9 @@ function validateDateField(val) {
     .sxxnl-radio-option:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
     .sxxnl-radio-option input[type=radio] { margin-top: 3px; flex-shrink: 0; accent-color: #2563eb; cursor: pointer; }
     .sxxnl-radio-option span { pointer-events: none; }
+    .sxxnl-radio-option-content { flex: 1; min-width: 0; }
+    .sxxnl-radio-option-content textarea { pointer-events: auto; }
+    .sxxnl-radio-option-suffix { color: #666; margin-top: 5px; }
     .sxxnl-submit {
       background: linear-gradient(135deg, #2563eb 0%, #ec4899 100%);
       color: #fff; border: none; border-radius: 12px;
@@ -399,6 +403,15 @@ function validateDateField(val) {
       font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
     }
     .sxxnl-edit-box h3 { font-size: 14px; font-weight: 700; margin: 0 0 10px; color: #2563eb; }
+    .sxxnl-edit-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .sxxnl-edit-header-row h3 { margin: 0; }
+    .sxxnl-edit-info-btn {
+      background: #eff6ff; border: 1.5px solid #93c5fd; color: #2563eb;
+      border-radius: 50%; width: 24px; height: 24px; font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      font-family: inherit; flex-shrink: 0; padding: 0; transition: all 0.15s;
+    }
+    .sxxnl-edit-info-btn:hover { background: #dbeafe; border-color: #2563eb; }
     .sxxnl-edit-row { margin-bottom: 10px; }
     .sxxnl-edit-row label { display: block; font-size: 12.5px; font-weight: 600; color: #555; margin-bottom: 4px; }
     .sxxnl-edit-row textarea {
@@ -428,7 +441,7 @@ function validateDateField(val) {
     .sxxnl-don-action-btn.undone:hover { border-color: #f59e0b; background: #fef9c3; }
     /* Info popover */
     #sxxnl-info-popover {
-      position: fixed; z-index: 999999; background: #f8f8f8; border-radius: 16px;
+      position: fixed; z-index: 99999999; background: #f8f8f8; border-radius: 16px;
       box-shadow: 0 12px 48px rgba(0,0,0,0.18); width: 390px; max-height: 60vh;
       display: none; flex-direction: column; overflow: hidden;
       font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
@@ -446,6 +459,11 @@ function validateDateField(val) {
     .sxxnl-info-content { font-size: 13px; line-height: 1.8; color: #333; white-space: pre-wrap; }
     /* Info select in header */
     #sxxnl-info-select {
+      display: inline-block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      -webkit-appearance: menulist !important;
+      appearance: menulist !important;
       color: #fff !important;
       background: rgba(255,255,255,0.15) !important;
       border: 1.5px solid rgba(255,255,255,0.35) !important;
@@ -456,7 +474,7 @@ function validateDateField(val) {
       cursor: pointer;
       max-width: 170px;
     }
-    #sxxnl-info-select option { color: #222; background: #fff; }
+    #sxxnl-info-select option { color: #222 !important; background: #fff !important; }
     .sxxnl-info-divider {
       border: none;
       border-top: 2.5px solid #2563eb;
@@ -569,15 +587,122 @@ function validateDateField(val) {
     soRawNum:       'Số raw (con số):',
     soRawChapName:  'Số raw (tên chương):',
     giaiThich:      'Giải thích thêm:',
-    linkBanNhung:   'Link bản nhúng mới:',
+    linkBanNhung:   'Link bản nhúng lại:',
     choTaiRaw:      'Chỗ tải raw:',
   };
+  const GIAI_THICH_1604_SUFFIX = ', mình đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.';
+  const GIAI_THICH_1604_OPTIONS = [
+    { value: 'A', labelHtml: 'Mình đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ 1 chương và không bị lỗi', hasInline: false },
+    { value: 'B', labelHtml: 'Bản nhúng cũ bị lỗi raw các chương', hasInline: true, inlineName: 'loi1604B', suffix: GIAI_THICH_1604_SUFFIX },
+    { value: 'C', labelHtml: '', hasInline: true, inlineName: 'loi1604C', suffix: GIAI_THICH_1604_SUFFIX },
+  ];
+  // Dựng phần nội dung (nhãn / ô nhập / câu cam kết) cho 1 lựa chọn A/B/C, xếp dọc và full-width.
+  // Trả về { content, inlineTa } — nơi gọi tự gắn dataset (data-field-name hoặc data-edit-field) vào inlineTa.
+  function buildGiaiThich1604OptionContent(opt) {
+    const content = document.createElement('div');
+    content.className = 'sxxnl-radio-option-content';
+    let inlineTa = null;
+    if (opt.hasInline) {
+      if (opt.labelHtml) {
+        const line1 = document.createElement('div');
+        line1.textContent = opt.labelHtml;
+        content.appendChild(line1);
+      }
+      inlineTa = document.createElement('textarea');
+      inlineTa.className = 'sxxnl-textarea';
+      inlineTa.rows = 1;
+      inlineTa.style.cssText = 'width:100%;margin:5px 0 0;';
+      inlineTa.placeholder = 'Ghi rõ chương / mô tả cụ thể...';
+      content.appendChild(inlineTa);
+      if (opt.suffix) {
+        const line3 = document.createElement('div');
+        line3.className = 'sxxnl-radio-option-suffix';
+        line3.textContent = opt.suffix;
+        content.appendChild(line3);
+      }
+    } else {
+      const span = document.createElement('span');
+      span.textContent = opt.labelHtml;
+      content.appendChild(span);
+    }
+    return { content, inlineTa };
+  }
+  function parseGiaiThich1604(text) {
+    const result = { value: null, loi1604B: '', loi1604C: '' };
+    if (!text) return result;
+    const trimmed = text.trim();
+    if (trimmed === 'Mình đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ 1 chương và không bị lỗi') {
+      result.value = 'A';
+      return result;
+    }
+    const bMatch = trimmed.match(/^Bản nhúng cũ bị lỗi raw các chương (.*), mình đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi\.$/);
+    if (bMatch) {
+      result.value = 'B';
+      result.loi1604B = bMatch[1];
+      return result;
+    }
+    const cMatch = trimmed.match(/^(.*), mình đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi\.$/);
+    if (cMatch) {
+      result.value = 'C';
+      result.loi1604C = cMatch[1];
+      return result;
+    }
+    return result;
+  }
+  function buildGiaiThich1604Row(existingValue) {
+    const row = document.createElement('div');
+    row.className = 'sxxnl-edit-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Giải thích thêm:';
+    row.appendChild(lbl);
+    const radioGroup = document.createElement('div');
+    radioGroup.className = 'sxxnl-radio-group';
+    const parsed = parseGiaiThich1604(existingValue);
+    GIAI_THICH_1604_OPTIONS.forEach(opt => {
+      const orow = document.createElement('div');
+      orow.className = 'sxxnl-radio-option';
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'sxxnl-edit-giaiThich1604';
+      radio.value = opt.value;
+      radio.dataset.editField = 'giaiThich1604';
+      if (parsed.value === opt.value) radio.checked = true;
+      orow.appendChild(radio);
+      const { content, inlineTa } = buildGiaiThich1604OptionContent(opt);
+      if (inlineTa) {
+        inlineTa.dataset.editField = opt.inlineName;
+        inlineTa.value = parsed[opt.inlineName] || '';
+      }
+      orow.appendChild(content);
+      orow.addEventListener('click', (e) => {
+        if (e.target.tagName === 'TEXTAREA') return;
+        radio.checked = true;
+      });
+      radioGroup.appendChild(orow);
+    });
+    row.appendChild(radioGroup);
+    return row;
+  }
   function openEditModal(don) {
     editingDonId = don.id;
     let editFormType = don.type || '1602';
     const editBox = editModal.querySelector('.sxxnl-edit-box');
     function buildEditModalContent() {
-      editBox.innerHTML = `<h3>✏️ Sửa đơn</h3>`;
+      editBox.innerHTML = `
+        <div class="sxxnl-edit-header-row">
+          <h3>✏️ Sửa đơn</h3>
+          <button type="button" class="sxxnl-edit-info-btn" id="sxxnl-edit-info-btn" title="Thông tin các đơn">ℹ</button>
+        </div>
+      `;
+      const editInfoBtn = editBox.querySelector('#sxxnl-edit-info-btn');
+      if (editInfoBtn) {
+        editInfoBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const mucList = Object.keys(MUC_TO_DON).filter(m => MUC_TO_DON[m] === editFormType);
+          const donLabel = formTypes.find(ft => ft.id === editFormType)?.label || editFormType;
+          openDonInfoPopover(mucList, donLabel, editInfoBtn);
+        });
+      }
       // Form-type tab bar
       const tabBar = document.createElement('div');
       tabBar.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;';
@@ -586,7 +711,7 @@ function validateDateField(val) {
 { id: '1602', label: '1602 - i,l,m,p,r' },
 { id: '1603', label: '1603 - d,e,g' },
 { id: '1604', label: '1604 - o' },
-{ id: '1605', label: '1605 - a,b,c,f,n' },
+{ id: '1605', label: '1605 - a,b,c,f,n,s' },
       ];
       formTypes.forEach(ft => {
         const btn = document.createElement('button');
@@ -613,6 +738,10 @@ function validateDateField(val) {
       };
       const fieldKeys = FORM_FIELDS[editFormType] || Object.keys(FIELD_LABELS);
       fieldKeys.forEach(key => {
+        if (editFormType === '1604' && key === 'giaiThich') {
+          fieldsWrap.appendChild(buildGiaiThich1604Row(f['giaiThich'] || ''));
+          return;
+        }
         const row = document.createElement('div');
         row.className = 'sxxnl-edit-row';
         const lbl = document.createElement('label');
@@ -641,6 +770,18 @@ function validateDateField(val) {
         editBox.querySelectorAll('textarea[data-edit-field]').forEach(ta => {
           updated[ta.dataset.editField] = ta.value.trim();
         });
+        if (editFormType === '1604') {
+          const checkedRadio = editBox.querySelector('input[data-edit-field="giaiThich1604"]:checked');
+          if (checkedRadio) {
+            let giaiThich = '';
+            if (checkedRadio.value === 'A') giaiThich = 'Mình đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ 1 chương và không bị lỗi';
+            if (checkedRadio.value === 'B') giaiThich = `Bản nhúng cũ bị lỗi raw các chương ${updated['loi1604B'] || ''}${GIAI_THICH_1604_SUFFIX}`;
+            if (checkedRadio.value === 'C') giaiThich = `${updated['loi1604C'] || ''}${GIAI_THICH_1604_SUFFIX}`;
+            updated['giaiThich'] = giaiThich;
+          } else {
+            delete updated['giaiThich'];
+          }
+        }
         const list = (getsxxnl()).map(d => {
           if (d.id !== editingDonId) return d;
           const fields = {};
@@ -702,20 +843,21 @@ function validateDateField(val) {
     'a': `**Bản nhúng đang có vi phạm, ví dụ: lỗi trình bày, sai tag... và chủ truyện không phải Trạm Rác.**\n\n*  Trường hợp hồ sơ của chủ truyện đã có mức phạt: titan sẽ xóa bản nhúng cũ để user nhúng lại bản mới.\n\n*  Trường hợp chủ truyện chưa có hồ sơ hoặc hồ sơ chưa có mức phạt: cần giữ lại chứng cứ để tính mức phạt nên titan sẽ không xóa bản nhúng cũ nhưng user vẫn được duyệt nhúng bản mới. Titan sẽ để lại lời nhắn trong hồ sơ để sau khi có mức phạt, truyện cũ bị xóa vĩnh viễn. Sau khi nhúng bản mới, user hãy dẫn link đơn xin xóa nhúng lại ở dưới văn án, để tránh bị cử báo vi phạm nhúng trùng.\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
     'b': `**Bản nhúng đang có vi phạm, ví dụ: lỗi trình bày, sai tag... và chủ truyện đang là Trạm Rác.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
     'c': `**Lịch sử cổng báo lỗi đã có người [báo lỗi raw tại các chương cụ thể / báo lỗi raw và chỉ ra các chương cụ thể], nhưng quá 14 ngày kể từ ngày báo tin, tất cả các chương đó vẫn chưa được sửa chữa thành chương HQ.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
-    'd': `**Truyện gốc trong 3 tháng gần đây có ra chương mới + truyện gốc đang nhiều hơn bản nhúng 20 chương HQ trở lên + bản nhúng đang có dưới 100 chương HQ.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn số chương HQ của bản nhúng cũ [color=rgb(255,0,0)]ít nhất 10 chương[/color] và không bị lỗi.`,
-    'e': `**Truyện gốc đã 3 tháng ngừng ra chương mới nhưng số chương HQ của bản nhúng vẫn chưa bằng với truyện gốc.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn số chương HQ của bản nhúng cũ và không bị lỗi.`,
-    'f': `**Truyện gốc đã hoàn chính văn, và Lịch sử cổng báo lỗi đã có người gửi [link đủ chương HQ chính văn mà hệ thống nhúng được vào thời điểm ấy] hoặc [link tải raw miễn phí có đủ chương HQ chính văn], nhưng quá 14 ngày kể từ ngày báo tin, truyện chưa được đổi sang link đủ chương HQ chính văn, hoặc chưa được bổ sung đủ chương HQ chính văn.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ, và ít nhất phải đủ chính văn, và không bị lỗi.`,
-    'g': `**Đã 14 ngày kể từ ngày truyện gốc hoàn chính văn, nhưng bản nhúng vẫn chưa đủ chương HQ chính văn.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ, và ít nhất phải đủ chính văn, và không bị lỗi.`,
+    'd': `**Truyện gốc trong 3 tháng gần đây có ra chương mới + truyện gốc đang nhiều hơn bản nhúng 20 chương HQ trở lên + bản nhúng đang có dưới 100 chương HQ.** [color=rgb(255,0,0)](Không áp dụng cho việc xin xóa truyện đã đủ chính văn để nhúng lại bản bổ sung phiên ngoại)[/color]\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương [color=rgb(255, 0, 0)]nhiều hơn số chương HQ của bản nhúng cũ ít nhất 10 chương[/color] và không bị lỗi.`,
+    'e': `**Truyện gốc đã 3 tháng ngừng ra chương mới nhưng số chương HQ của bản nhúng vẫn chưa bằng với truyện gốc.** [color=rgb(255,0,0)](Không áp dụng cho việc xin xóa truyện đã đủ chính văn để nhúng lại bản bổ sung phiên ngoại)[/color]\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương [color=rgb(255, 0, 0)]nhiều hơn số chương HQ của bản nhúng cũ[/color] và không bị lỗi.`,
+    'f': `**Truyện gốc đã hoàn chính văn, và Lịch sử cổng báo lỗi đã có người gửi [link đủ chương HQ chính văn mà hệ thống nhúng được vào thời điểm ấy] hoặc [link tải raw miễn phí có đủ chương HQ chính văn] hoặc [link tải raw phiên ngoại miễn phí], nhưng quá 14 ngày kể từ ngày báo tin, truyện chưa được đổi sang link đủ chương HQ chính văn, hoặc chưa được bổ sung đủ chương HQ chính văn, hoặc chưa được bổ sung đủ raw phiên ngoại ngang với đường link trong tin báo.**\n\n-**Trong trường hợp tin báo lỗi gửi link đủ chương HQ chính văn:** User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ, và [color=rgb(255, 0, 0)]ít nhất phải đủ chính văn[/color], và không bị lỗi.\n\n-**Trong trường hợp tin báo lỗi gửi link có raw phiên ngoại:** User phải đảm bảo bản nhúng lại có [color=rgb(255, 0, 0)]đủ chính văn và phiên ngoại ngang với đường link trong tin báo.[/color]`,
+    'g': `**Đã 14 ngày kể từ ngày truyện gốc hoàn chính văn, nhưng bản nhúng vẫn chưa đủ chương HQ chính văn.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ, và [color=rgb(255, 0, 0)]ít nhất phải đủ chính văn[/color], và không bị lỗi.`,
     'i': `**Bản nhúng không có vi phạm (lỗi trình bày, sai tag, nhúng trùng, gian lận raw...) + có lý do chính đáng cần thiết phải xóa và nhúng lại + chủ truyện và DQL đều đồng ý cho xóa để nhúng lại (đơn xin xóa phải kèm theo ảnh chụp tin nhắn thương lượng).**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
     'k': `**Truyện Trạm Rác đáp ứng 2 điều kiện: [Không có DQL / Biên tập] + [Đang có lỗi raw tại chương cụ thể / user muốn nhúng lại với số raw nhiều hơn bản hiện hữu]**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn và không bị lỗi, nếu bản nhúng cũ không bị lỗi raw.\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi, nếu bản nhúng cũ bị lỗi raw.`,
-    'l': `**Bản nhúng đang bị khóa riêng tư + văn án không có dòng cảnh báo của Hệ thống: "Truyện có nội dung xúc phạm đến nước ta nên bị khóa. Xin đừng đọc nếu chưa có sự chuẩn bị về tâm lý."**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương [color=rgb(255,0,0)]nhiều hơn hoặc bằng số chương HQ của bản nhúng cũ[/color] và không bị lỗi. User phải đảm bảo sẽ không set Riêng tư cho truyện nhúng lại.`,
-    'm': `**Xin xóa nhúng lại bản mới nhiều chương hơn.**\n\n-Truyện Wiki: User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ [color=rgb(255,0,0)]40 chương[/color] và không bị lỗi.`,
+    'l': `**Bản nhúng đang bị khóa riêng tư + văn án không có dòng cảnh báo của Hệ thống: "Truyện có nội dung xúc phạm đến nước ta nên bị khóa. Xin đừng đọc nếu chưa có sự chuẩn bị về tâm lý."**\n\n-Nếu chủ truyện gỡ khóa trước khi titan xóa truyện: titan sẽ bác bỏ đơn xin xóa nhúng lại.\n-Nếu chủ truyện không gỡ khóa: titan sẽ xóa truyện.\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương [color=rgb(255,0,0)]nhiều hơn hoặc bằng số chương HQ của bản nhúng cũ[/color] và không bị lỗi. User phải đảm bảo sẽ không set Riêng tư cho truyện nhúng lại.`,
+    'm': `**Xin xóa nhúng lại bản mới nhiều chương hơn.**\n\n-Truyện Wiki: User phải đảm bảo chính mình sẽ nhúng lại với [color=rgb(255,0,0)]số chương nhiều hơn bản nhúng cũ 40 chương[/color] và không bị lỗi.`,
     'n': `**Nếu user đã xin làm DQL để sửa raw lỗi/up thêm raw mới (trong tin nhắn xin làm DQL có ghi rõ muốn sửa/thêm những bộ phận nào), nhưng bị chủ truyện từ chối, và quá 2 tuần kể từ ngày từ chối DQL, chủ truyện vẫn không tự sửa raw lỗi/up thêm raw mới những bộ phận mà user ghi trong tin nhắn, thì user có quyền xin xóa truyện để nhúng lại (đơn xin xóa phải kèm theo ảnh chụp tin nhắn xin làm DQL bị từ chối).**\n\n-Yêu cầu xóa truyện chỉ hợp lệ khi tin nhắn xin làm DQL có cấu trúc như sau: [color=rgb(255, 0, 0)]{Mình xin được làm DQL để} + {bổ sung/fix lỗi} + {chương... /từ chương... tới chương...}[/color]\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương bao gồm [color=rgb(255, 0, 0)]số chương bản nhúng cũ + những bộ phận từng viết trong tin nhắn xin làm DQL[/color], và không bị lỗi.`,
-    'o': `**Truyện mà chủ hiện tại đang bị khóa Nhúng + [Đang có lỗi raw tại chương cụ thể / user muốn nhúng lại với số raw nhiều hơn bản hiện hữu]**\n\n-Bản nhúng cũ không bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ [color=rgb(255,0,0)]1 chương[/color] và không bị lỗi.\n\n-Bản nhúng cũ bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
-    'r': `**Truyện đang để tag Chưa xác minh + "Thời gian đổi mới" đã cách đây 1 tháng + [Đang có lỗi raw tại chương cụ thể / User muốn nhúng lại với số raw nhiều hơn bản hiện hữu]**\n\n-Bản nhúng cũ không bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ 1 chương và không bị lỗi.\n\n-Bản nhúng cũ bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
-    'p': `**Truyện nhúng bằng file và đã ngừng up chương mới 3 tháng trở lên.**\n\n-User phải đảm bảo sẽ nhúng lại với số chương nhiều hơn số chương HQ của bản nhúng cũ ít nhất 10 chương và không bị lỗi.`,
+    'o': `**Truyện mà chủ hiện tại đang bị khóa Nhúng + [Đang có lỗi raw tại chương cụ thể / user muốn nhúng lại với số raw nhiều hơn bản hiện hữu]**\n\n-Bản nhúng cũ không bị lỗi raw: User đảm bảo sẽ nhúng lại với [color=rgb(255, 0, 0)]số chương nhiều hơn bản nhúng cũ 1 chương[/color] và không bị lỗi.\n\n-Bản nhúng cũ bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
+    'p': `**Truyện nhúng bằng file và đã ngừng up chương mới 3 tháng trở lên.**\n\n-User phải đảm bảo sẽ nhúng lại với số chương [color=rgb(255, 0, 0)]nhiều hơn số chương HQ của bản nhúng cũ ít nhất 10 chương[/color] và không bị lỗi.`,
+    'r': `**Truyện đang để tag Chưa xác minh + "Thời gian đổi mới" đã cách đây 1 tháng + [Đang có lỗi raw tại chương cụ thể / User muốn nhúng lại với số raw nhiều hơn bản hiện hữu]**\n\n-Bản nhúng cũ không bị lỗi raw: User đảm bảo sẽ nhúng lại với [color=rgb(255, 0, 0)]số chương nhiều hơn bản nhúng cũ 1 chương[/color] và không bị lỗi.\n\n-Bản nhúng cũ bị lỗi raw: User đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
+    's': `**Truyện gốc đã hoàn chính văn, và Lịch sử cổng báo lỗi đã có người gửi tin báo lỗi sẽ nhúng lại bản bổ sung phiên ngoại (theo form bên dưới), nhưng quá 14 ngày kể từ ngày báo tin, truyện chưa được bổ sung đủ raw phiên ngoại ngang với tin báo, thì user có quyền xin xóa truyện để nhúng lại.**\n\n-Yêu cầu xóa truyện chỉ hợp lệ khi tin báo lỗi có cấu trúc như sau: [color=rgb(255,0,0)]{Mình có raw phiên ngoại xx-xx, dự tính xin xóa nhúng lại truyện này sau 14 ngày nữa}[/color]\n\n-User phải đảm bảo bản nhúng lại có [color=rgb(255, 0, 0)]đủ chính văn và phiên ngoại ngang với tin báo, hạn chót nhúng lại là ngày thứ 28 tính từ ngày báo lỗi.[/color]\n\n-**Phạt vạ nếu báo lỗi mà không nhúng lại:** Nếu chủ truyện không bổ sung raw phiên ngoại mà user [color=rgb(255, 0, 0)]không nộp đơn xin xóa và nhúng lại đúng hẹn thì bị khóa toàn bộ tính năng + ban nick forum trong thời gian 6 tháng.[/color]`
   };
-  const MUC_LIST = ['a','b','c','d','e','f','g','i','k','l','m','n','o','p','r'];
+  const MUC_LIST = ['a','b','c','d','e','f','g','i','k','l','m','n','o','p','r','s'];
   const SUB_TABS = [
     { id: '1601', label: 'Đơn 1601: mục k' },
     { id: '1602', label: 'Đơn 1602: mục i,l,m,p,r' },
@@ -749,6 +891,7 @@ function validateDateField(val) {
     'o': 'Chủ bị khóa Nhúng',
     'p': 'File ngừng up > 3 tháng',
     'r': 'Tag chưa xác minh',
+    's': 'Báo lỗi phiên ngoại',
   };
   function buildTab1() {
     content1.innerHTML = '';
@@ -883,7 +1026,7 @@ function validateDateField(val) {
     wrap.className = 'sxxnl-field';
     const lbl = document.createElement('label');
     lbl.className = 'sxxnl-label';
-    lbl.textContent = 'Link bản nhúng mới:';
+    lbl.textContent = 'Link bản nhúng lại:';
     const ta = document.createElement('textarea');
     ta.className = 'sxxnl-textarea';
     ta.rows = 1;
@@ -977,39 +1120,15 @@ function validateDateField(val) {
       const radioGroup = document.createElement('div');
       radioGroup.className = 'sxxnl-radio-group';
       radioGroup.dataset.fieldName = 'giaiThich1604';
-      const options = [
-        { value: 'A', labelHtml: 'Mình đảm bảo sẽ nhúng lại với số chương nhiều hơn bản nhúng cũ 1 chương và không bị lỗi', hasInline: false },
-        { value: 'B', labelHtml: 'Bản nhúng cũ bị lỗi raw các chương', hasInline: true, inlineName: 'loi1604B', suffix: ', mình đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.' },
-        { value: 'C', labelHtml: '', hasInline: true, inlineName: 'loi1604C', suffix: ', mình đảm bảo sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.' },
-      ];
-      options.forEach(opt => {
+      GIAI_THICH_1604_OPTIONS.forEach(opt => {
         const row = document.createElement('div');
         row.className = 'sxxnl-radio-option';
         const radio = document.createElement('input');
         radio.type = 'radio'; radio.name = 'giaiThich1604'; radio.value = opt.value;
         row.appendChild(radio);
-        if (opt.hasInline) {
-          if (opt.labelHtml) {
-            const span0 = document.createElement('span');
-            span0.textContent = opt.labelHtml + ' ';
-            row.appendChild(span0);
-          }
-          const inlineTa = document.createElement('textarea');
-          inlineTa.className = 'sxxnl-textarea-sm';
-          inlineTa.rows = 1;
-          inlineTa.style.width = '120px';
-          inlineTa.dataset.fieldName = opt.inlineName;
-          row.appendChild(inlineTa);
-          if (opt.suffix) {
-            const span2 = document.createElement('span');
-            span2.textContent = opt.suffix;
-            row.appendChild(span2);
-          }
-        } else {
-          const span = document.createElement('span');
-          span.textContent = opt.labelHtml;
-          row.appendChild(span);
-        }
+        const { content, inlineTa } = buildGiaiThich1604OptionContent(opt);
+        if (inlineTa) inlineTa.dataset.fieldName = opt.inlineName;
+        row.appendChild(content);
         row.addEventListener('click', (e) => {
           if (e.target.tagName === 'TEXTAREA') return;
           radio.checked = true;
@@ -1183,7 +1302,7 @@ function validateDateField(val) {
       lines.push(`-Số raw mà mình đang có để chuẩn bị nhúng lại: ${f.soRawNum} chương${chapName}`);
     }
     if (f.giaiThich)      lines.push(`-Giải thích thêm: ${f.giaiThich}`);
-    if (f.linkBanNhung)   lines.push(`-Link bản nhúng mới: ${f.linkBanNhung}`);
+    if (f.linkBanNhung)   lines.push(`-Link bản nhúng lại: ${f.linkBanNhung}`);
     if (f.choTaiRaw)      lines.push(`-Chỗ tải raw: ${f.choTaiRaw}`);
     return lines.join('\n');
   }
@@ -1203,7 +1322,7 @@ function validateDateField(val) {
       lines.push(`-Số raw mà mình đang có để chuẩn bị nhúng lại: ${f.soRawNum} chương${chapName}`);
     }
     if (f.giaiThich)      lines.push(`-Giải thích thêm: ${f.giaiThich}`);
-    if (f.linkBanNhung)   lines.push(`-Link bản nhúng mới: ${f.linkBanNhung}`);
+    if (f.linkBanNhung)   lines.push(`-Link bản nhúng lại: ${f.linkBanNhung}`);
     return lines.join('\n');
   }
   function buildCopyText(dons, filter) {
@@ -1448,10 +1567,11 @@ function validateDateField(val) {
     { value: 'o',   label: 'Mục O - Chủ bị khóa Nhúng' },
     { value: 'p',   label: 'Mục P - File ngừng up > 3 tháng' },
     { value: 'r',   label: 'Mục R - Tag chưa xác minh' },
+    { value: 's',   label: 'Mục S - Báo lỗi phiên ngoại' },
   ];
   infoPopover.innerHTML = `
     <div class="sxxnl-info-header">
-      <span>Thông tin các mục</span>
+      <span id="sxxnl-info-header-title">Thông tin các mục</span>
       <select id="sxxnl-info-select">
         ${INFO_SELECT_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
       </select>
@@ -1489,6 +1609,37 @@ function validateDateField(val) {
       el.innerHTML = `<strong style="font-size:14px;color:#2563eb;">Mục ${muc.toUpperCase()}</strong> <span style="font-size:11.5px;color:#6b7280;font-style:italic;">${label}</span><br><br>${formatInfoHtml(INFO_CONTENT[muc] || 'Không có thông tin.')}`;
     }
   }
+  function renderInfoContentForMucs(mucs) {
+    const el = document.getElementById('sxxnl-info-content');
+    const list = MUC_LIST.filter(m => mucs.includes(m));
+    if (!list.length) { el.innerHTML = 'Không có thông tin.'; return; }
+    el.innerHTML = list.map((m, idx) => {
+      const header = `<strong style="font-size:14px;color:#2563eb;">Mục ${m.toUpperCase()}</strong> <span style="font-size:11.5px;color:#6b7280;font-style:italic;">${MUC_SHORT[m] || ''}</span>`;
+      const body = formatInfoHtml(INFO_CONTENT[m] || '');
+      const divider = idx < list.length - 1
+        ? '<hr class="sxxnl-info-divider">'
+        : '';
+      return `<div>${header}<br><br>${body}</div>${divider}`;
+    }).join('');
+  }
+  // Mở popover thông tin, dùng lại cho nút info trong panel sửa đơn (Thông tin các đơn)
+  function openDonInfoPopover(mucs, donLabel, anchorEl) {
+    const sel = document.getElementById('sxxnl-info-select');
+    const titleEl = document.getElementById('sxxnl-info-header-title');
+    if (titleEl) titleEl.textContent = `Thông tin đơn: ${donLabel || ''}`;
+    if (sel) sel.style.setProperty('display', 'none', 'important');
+    renderInfoContentForMucs(mucs);
+    infoPopover.classList.add('open');
+    const ar = anchorEl.getBoundingClientRect();
+    const iw = 390;
+    let left = ar.right - iw;
+    if (left < 8) left = 8;
+    if (left + iw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - iw - 8);
+    let top = ar.bottom + 8;
+    if (top + 300 > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 320);
+    infoPopover.style.top = top + 'px';
+    infoPopover.style.left = left + 'px';
+  }
   document.getElementById('sxxnl-info-select').addEventListener('change', (e) => {
     renderInfoContent(e.target.value);
   });
@@ -1499,8 +1650,10 @@ function validateDateField(val) {
     e.stopPropagation();
     const open = infoPopover.classList.toggle('open');
     if (open) {
+      const titleEl = document.getElementById('sxxnl-info-header-title');
+      if (titleEl) titleEl.textContent = 'Thông tin các mục';
       const sel = document.getElementById('sxxnl-info-select');
-      if (sel) sel.value = 'all';
+      if (sel) { sel.style.removeProperty('display'); sel.value = 'all'; }
       renderInfoContent('all');
       const pr = panel.getBoundingClientRect();
       infoPopover.style.top = pr.top + 'px';
@@ -1512,7 +1665,9 @@ function validateDateField(val) {
     }
   });
   document.addEventListener('click', (e) => {
-    if (!infoPopover.contains(e.target) && e.target !== panel.querySelector('#sxxnl-info-btn')) {
+    if (!infoPopover.contains(e.target)
+        && e.target !== panel.querySelector('#sxxnl-info-btn')
+        && !e.target.closest('#sxxnl-edit-info-btn')) {
       infoPopover.classList.remove('open');
     }
   });
