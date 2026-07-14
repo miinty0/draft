@@ -4,7 +4,7 @@
 // @version      1.4
 // @description  Tự động expand hết các review trên Wiki và posts trên forum
 // @author       Miinty
-// @match        https://*.net/review*
+// @include      /^https:\/\/([^.\/]+\.)*[^.\/]*wiki[^.\/]*\.[^\/]+\/review
 // @match        https://forum.dichtienghoa.com/*
 // @grant        none
 // @run-at       document-idle
@@ -12,7 +12,6 @@
 
 (function() {
     'use strict';
-
     // Hàm expand cho Wiki
     function expandWikiReviews() {
         // Tìm tất cả nút "Xem thêm"
@@ -34,9 +33,7 @@
     // Hàm expand cho Forum
     function expandForumPosts() {
         const posts = document.querySelectorAll('[component="post/content"]');
-
         let expandedCount = 0;
-
         posts.forEach(post => {
             // Kiểm tra nếu post bị cắt (scrollHeight > offsetHeight)
             if (post.scrollHeight > post.offsetHeight) {
@@ -47,31 +44,26 @@
                 expandedCount++;
             }
         });
-
         console.log(`[Forum] Đã expand ${expandedCount}/${posts.length} posts`);
     }
-
     // Hàm chính
     function autoExpand() {
         const hostname = window.location.hostname;
         const pathname = window.location.pathname;
 
         console.log(`[Auto Expand] Checking page: ${pathname}`);
-
-        if (hostname === 'wikicv.net') {
-            expandWikiReviews();
-        } else if (hostname === 'forum.dichtienghoa.com') {
-            expandForumPosts();
-        }
+    if (hostname.includes('wiki')) {
+    expandWikiReviews();
+} else if (hostname === 'forum.dichtienghoa.com') {
+    expandForumPosts();
+}
     }
-
     // Debounce để tránh chạy quá nhiều lần
     let debounceTimer;
     function debouncedAutoExpand() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(autoExpand, 200);
     }
-
     autoExpand();
     setTimeout(autoExpand, 1000);
     const observer = new MutationObserver((mutations) => {
@@ -88,20 +80,16 @@
                 return false;
             });
         });
-
         if (hasNewContent) {
             console.log('[Auto Expand] Phát hiện nội dung mới, đang expand...');
             debouncedAutoExpand();
         }
     });
-
     // Bắt đầu theo dõi
     observer.observe(document.body, {
         childList: true,
         subtree: true
     });
-
-    // Theo dõi khi người dùng scroll (một số trang lazy load khi scroll)
     let lastScrollTop = 0;
     window.addEventListener('scroll', () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -110,7 +98,6 @@
             lastScrollTop = scrollTop;
         }
     }, { passive: true });
-
     // Theo dõi khi tab được focus lại (snap window, switch tab)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
@@ -118,17 +105,14 @@
             setTimeout(autoExpand, 300);
         }
     });
-
     // Theo dõi khi window được focus lại
     window.addEventListener('focus', () => {
         console.log('[Auto Expand] Window được focus lại, đang kiểm tra...');
         setTimeout(autoExpand, 300);
     });
-
     // Theo dõi history API (khi trang chuyển URL không reload)
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
-
     history.pushState = function() {
         originalPushState.apply(this, arguments);
         console.log('[Auto Expand] URL changed via pushState:', location.pathname);
