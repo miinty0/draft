@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.3
-// @history      fix: sửa đơn đã lưu đổi sang loại 1604 giờ hiện đủ option A/B/C cho giải thích thêm, dropdown i hiện đúng trên wiki
-// @history      new: thêm nút i trong panel sửa đơn đã lưu, thêm mục s mới
+// @version      1.4
+// @history      Cho phép hiển thị trên domain mới
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
-// @match        https://wikicv.net/user/*
-// @match        https://wikicv.net/truyen/*
-// @exclude      https://wikicv.net/truyen/*/*
+// @include      /^https:\/\/[^/]*wiki[^/]*\/user\/[^\/]+$/
+// @include      /^https:\/\/[^/]*wiki[^/]*\/truyen\/[^\/]+$/
 // @match        https://forum.dichtienghoa.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -19,9 +17,11 @@
 (function () {
   'use strict';
   // AUTO-FILL DATA
-const isWikicv = location.hostname === 'wikicv.net' && location.pathname.startsWith('/truyen/');
-  let autoFill = { storyUrl: '', storyName: '', latestChapter: '', managers: '' };
-  if (isWikicv) {
+const isWiki =
+  location.hostname.includes('wiki') &&
+  location.pathname.startsWith('/truyen/');
+    let autoFill = { storyUrl: '', storyName: '', latestChapter: '', managers: '' };
+  if (isWiki) {
     autoFill.storyUrl = window.location.href;
     const titleEl = document.querySelector('.cover-info h2');
     autoFill.storyName = titleEl?.innerText?.trim() || '';
@@ -596,8 +596,6 @@ function validateDateField(val) {
     { value: 'B', labelHtml: 'Bản nhúng cũ bị lỗi raw các chương', hasInline: true, inlineName: 'loi1604B', suffix: GIAI_THICH_1604_SUFFIX },
     { value: 'C', labelHtml: '', hasInline: true, inlineName: 'loi1604C', suffix: GIAI_THICH_1604_SUFFIX },
   ];
-  // Dựng phần nội dung (nhãn / ô nhập / câu cam kết) cho 1 lựa chọn A/B/C, xếp dọc và full-width.
-  // Trả về { content, inlineTa } — nơi gọi tự gắn dataset (data-field-name hoặc data-edit-field) vào inlineTa.
   function buildGiaiThich1604OptionContent(opt) {
     const content = document.createElement('div');
     content.className = 'sxxnl-radio-option-content';
