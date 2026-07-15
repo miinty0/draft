@@ -1,14 +1,15 @@
 // ==UserScript==
 // @name         Tool Manager
-// @version      22
-// @history      Cho phép hiển thị trên domain mới
+// @version      25
+// @history      Cho phép hiển thị trên domain mới, thêm backup ngầm để có thể restore cho lần đổi domain sau
 // @description  Quản lý truyện
 // @author       Minty
 // @include      /^https:\/\/[^/]*wiki[^/]*\/user\/.*\/works/
 // @include      /^https:\/\/[^/]*wiki[^/]*\/truyen\//
 // @updateURL    https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
 // @downloadURL  https://github.com/miinty0/draft/raw/refs/heads/main/Tool%20Manager.user.js
-// @grant none
+// @grant        GM_setValue
+// @grant        GM_getValue
 // ==/UserScript==
 (function () {
     "use strict";
@@ -22,6 +23,10 @@
     const AUTO_UPDATE_KEY = "wd_auto_update_completed";
     const MAX_Z_INDEX = 999999;
     const SYNC_CHANNEL_NAME = "wd_manager_sync_channel";
+    const GM_BACKUP_KEY = "wd_gm_backup";
+    const CLEAR_FLAG_KEY = "wd_intentional_clear_ts";
+    const BACKUP_DEBOUNCE_MS = 5 * 60 * 1000;
+    let backupDebounceTimer = null;
     let GLOBAL_CACHE = [];
     const VIRTUAL_SCROLL = { ITEM_HEIGHT: 90, VISIBLE_ITEMS: 30, BUFFER_ITEMS: 10 };
     let virtualScrollState = { scrollTop: 0, filteredData: [], startIndex: 0, endIndex: 30 };
@@ -70,6 +75,17 @@
         return p?.length === 3 ? new Date(p[2], p[1] - 1, p[0]).getTime() : 0;
     };
     const syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    function scheduleBackup() {
+        if (backupDebounceTimer) clearTimeout(backupDebounceTimer);
+        backupDebounceTimer = setTimeout(async () => {
+            try {
+                const items = await db.getAll();
+                GM_setValue(GM_BACKUP_KEY, JSON.stringify(items));
+            } catch (e) {
+                console.error("Backup GM storage thất bại:", e);
+            }
+        }, BACKUP_DEBOUNCE_MS);
+    }
     const db = {
         open: () =>
             new Promise((resolve, reject) => {
@@ -105,21 +121,33 @@
                 const tx = d.transaction(STORE_NAME, "readwrite");
                 const store = tx.objectStore(STORE_NAME);
                 items.forEach((item) => store.put(item));
-                tx.oncomplete = () => resolve();
+                tx.oncomplete = () => {
+                    scheduleBackup();
+                    resolve();
+                };
             }),
         delete: (id) =>
             new Promise(async (resolve) => {
                 const d = await db.open();
                 const tx = d.transaction(STORE_NAME, "readwrite");
                 tx.objectStore(STORE_NAME).delete(id);
-                tx.oncomplete = () => resolve();
+                tx.oncomplete = () => {
+                    scheduleBackup();
+                    resolve();
+                };
             }),
         clearAll: () =>
             new Promise(async (resolve) => {
                 const d = await db.open();
                 const tx = d.transaction(STORE_NAME, "readwrite");
                 tx.objectStore(STORE_NAME).clear();
-                tx.oncomplete = () => resolve();
+                tx.oncomplete = () => {
+                    try {
+                        localStorage.setItem(CLEAR_FLAG_KEY, Date.now().toString());
+                    } catch (e) {}
+                    scheduleBackup();
+                    resolve();
+                };
             })
     };
     let audioCtx, osc, gainNode;
@@ -162,7 +190,70 @@
         } catch (e) {}
     }
     const styleEl = document.createElement("style");
-    styleEl.innerText = `:root {--wd-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;--wd-bg: rgba(255,255,255,0.95);--wd-text: #2c3e50;--wd-accent: #27ae60;--wd-accent-hover: #219150;--wd-danger: #ff4757;--wd-danger-hover: #ff6b81;--wd-border: rgba(0,0,0,0.08);--wd-item-bg: #fff;--wd-input-bg: #f1f2f6;--wd-shadow: 0 8px 30px rgba(0,0,0,0.12);--wd-item-shadow: 0 2px 8px rgba(0,0,0,0.04);--wd-header-bg: #fff;--wd-text-sub: #a4b0be;--wd-scroll: #ced6e0;color-scheme: light;}[data-wd-theme="dark"] {--wd-bg: rgba(33,33,33,0.95);--wd-text: #dfe4ea;--wd-accent: #2ed573;--wd-accent-hover: #7bed9f;--wd-danger: #ff4757;--wd-danger-hover: #ff6b81;--wd-border: rgba(255,255,255,0.1);--wd-item-bg: #2f3542;--wd-input-bg: #57606f;--wd-shadow: 0 8px 30px rgba(0,0,0,0.5);--wd-item-shadow: 0 4px 12px rgba(0,0,0,0.2);--wd-header-bg: #2f3542;--wd-text-sub: #a4b0be;--wd-scroll: #747d8c;color-scheme: dark;}[data-wd-theme="dark"] ::-webkit-calendar-picker-indicator {filter: invert(1);cursor: pointer;}#wd-panel * {box-sizing: border-box;}#wd-panel {position: fixed;top: 10vh;right: 20px;width: 320px;background: var(--wd-bg);color: var(--wd-text);border-radius: 16px;z-index: ${MAX_Z_INDEX};font-family: var(--wd-font);font-size: 13px;display: flex;flex-direction: column;max-height: 85vh;transition: all 0.4s cubic-bezier(0.25,0.8,0.25,1);border: 1px solid var(--wd-border);box-shadow: var(--wd-shadow);backdrop-filter: blur(10px);}#wd-panel.wd-minimized {width: auto !important;height: 50px !important;min-width: 160px;border-radius: 25px;top: auto !important;bottom: 30px;right: 30px;cursor: pointer;background: var(--wd-accent) !important;padding: 0 20px;display: flex;align-items: center;justify-content: center;border: 2px solid rgba(255,255,255,0.2);box-shadow: 0 4px 15px rgba(39,174,96,0.5);}#wd-panel.wd-minimized > * {display: none !important;}#wd-panel.wd-minimized::after {content: "🗃️ Tool Manager";color: #fff;font-weight: 700;font-size: 14px;white-space: nowrap;letter-spacing: 0.5px;}#wd-panel.wd-minimized:hover {transform: translateY(-5px);}#wd-header {padding: 12px 16px;background: transparent;border-bottom: 1px solid var(--wd-border);display: flex;justify-content: space-between;align-items: center;user-select: none;flex-shrink: 0;}.wd-title-text {font-weight: 800;font-size: 14px;color: var(--wd-accent);letter-spacing: 0.5px;}.wd-actions {display: flex;gap: 8px;}.wd-icon-btn {background: transparent;border: none;cursor: pointer;font-size: 16px;width: 28px;height: 28px;border-radius: 6px;color: var(--wd-text-sub);transition: 0.2s;display: flex;align-items: center;justify-content: center;}.wd-icon-btn:hover {background: rgba(0,0,0,0.05);color: var(--wd-text);}.wd-icon-btn.danger:hover {color: var(--wd-danger);background: rgba(231,76,60,0.1);}#wd-body {padding: 12px;overflow-y: auto;overflow-x: hidden;flex-grow: 1;scrollbar-width: thin;scrollbar-color: var(--wd-scroll) transparent;scroll-behavior: smooth;will-change: scroll-position;}#wd-body::-webkit-scrollbar {width: 5px;}#wd-body::-webkit-scrollbar-thumb {background: var(--wd-scroll);border-radius: 10px;}.wd-row {display: flex;gap: 8px;margin-bottom: 10px;width: 100%;align-items: stretch;}.wd-col {flex: 1;}.wd-grid-row {display: grid;grid-template-columns: 1fr 1fr;gap: 8px;margin-bottom: 10px;}.wd-input-wrap {position: relative;width: 100%;height: 20px;}.wd-input-icon {position: absolute;left: 0;top: 0;width: 24px;height: 100%;display: flex;align-items: center;justify-content: center;font-size: 12px;opacity: 0.7;pointer-events: none;z-index: 2;}.wd-input, .wd-select {width: 100%;border: 1px solid transparent;background: var(--wd-input-bg);color: var(--wd-text);padding: 0;text-indent: 4px;font-size: 10px;border-radius: 8px;outline: none;transition: 0.2s;height: 20px;line-height: 18px;margin-bottom: 0;}.wd-input-wrap .wd-input {padding: 0;padding-left: 24px;text-indent: 0;height: 100%;}.wd-input:focus, .wd-select:focus {background: var(--wd-bg);border-color: var(--wd-accent);box-shadow: 0 0 0 3px rgba(39,174,96,0.1);}.wd-btn {width: 100%;padding: 0;border: none;border-radius: 8px;font-weight: 700;color: #fff;cursor: pointer;font-size: 10px;text-transform: uppercase;background: var(--wd-accent);transition: 0.2s;letter-spacing: 0.5px;height: 20px;display: flex;align-items: center;justify-content: center;}.wd-btn:hover {background: var(--wd-accent-hover);box-shadow: 0 4px 10px rgba(39,174,96,0.3);transform: translateY(-1px);}.wd-btn:active {transform: translateY(1px);}.wd-btn:disabled {opacity: 0.6;cursor: not-allowed;box-shadow: none;transform: none;}.wd-btn.danger {background: var(--wd-danger);}.wd-btn.danger:hover {background: var(--wd-danger-hover);box-shadow: 0 4px 10px rgba(231,76,60,0.3);}.wd-io-btn {font-size: 10px;padding: 0 8px;border: 1px solid var(--wd-border);background: var(--wd-input-bg);color: var(--wd-text);border-radius: 6px;cursor: pointer;transition: 0.2s;height: 20px;display: flex;align-items: center;justify-content: center;}.wd-io-btn:hover {border-color: var(--wd-accent);color: var(--wd-accent);}#wd-toast {visibility: hidden;min-width: 200px;background-color: rgba(47,53,66,0.95);backdrop-filter: blur(5px);color: #fff;text-align: center;border-radius: 50px;padding: 10px 24px;position: fixed;z-index: ${MAX_Z_INDEX};left: 50%;bottom: 30px;transform: translateX(-50%) translateY(20px);font-family: var(--wd-font);font-size: 13px;font-weight: 500;box-shadow: 0 10px 30px rgba(0,0,0,0.2);opacity: 0;transition: all 0.3s;}#wd-toast.show {visibility: visible;transform: translateX(-50%) translateY(0);opacity: 1;}#wd-chapter-panel {position: fixed;top: 100px;left: 20px;z-index: ${MAX_Z_INDEX};background: var(--wd-bg);color: var(--wd-text);border-left: 4px solid var(--wd-accent);padding: 10px 18px;border-radius: 0 12px 12px 0;box-shadow: var(--wd-shadow);font-family: var(--wd-font);font-size: 13px;font-weight: 600;display: flex;align-items: center;gap: 8px;transition: all 0.3s;cursor: default;backdrop-filter: blur(10px);max-width: 300px;overflow: hidden;}#wd-chapter-panel:hover {transform: translateX(5px);}#wd-chapter-panel span.num {color: var(--wd-danger);font-size: 16px;font-weight: 700;}#wd-chapter-panel .wd-close {cursor: pointer;margin-left: 8px;opacity: 0.4;font-size: 10px;padding: 4px;}#wd-chapter-panel .wd-close:hover {opacity: 1;background: rgba(0,0,0,0.1);border-radius: 50%;}#wd-chapter-panel.wd-collapsed {width: 40px;height: 40px;padding: 0;justify-content: center;border-radius: 50%;background: var(--wd-bg);border: 2px solid var(--wd-accent);cursor: pointer;}#wd-chapter-panel.wd-collapsed .wd-content,#wd-chapter-panel.wd-collapsed .wd-close {display: none !important;}#wd-chapter-panel.wd-collapsed::after {content: "🗃️";font-size: 20px;}#wd-result-list {margin-top: 10px;position: relative;}#wd-virtual-container {position: relative;will-change: transform;width: 100%;}.wd-list-item {width: 100%;background: var(--wd-item-bg);padding: 10px;margin-bottom: 5px;border-radius: 10px;box-shadow: var(--wd-item-shadow);transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out;border: 1px solid var(--wd-border);position: absolute;overflow: hidden;will-change: transform;contain: layout style paint;}.wd-list-item:hover {transform: translateY(-2px);box-shadow: 0 5px 15px rgba(0,0,0,0.08);border-color: rgba(39,174,96,0.3);}.wd-item-title {display: block;font-weight: 700;font-size: 13px;color: var(--wd-text);text-decoration: none;margin-bottom: 4px;white-space: nowrap;overflow: hidden;text-overflow: ellipsis;padding-right: 25px;}.wd-item-title:hover {color: var(--wd-accent);}.wd-item-meta {font-size: 11px;color: var(--wd-text-sub);margin-bottom: 6px;display: flex;justify-content: space-between;align-items: center;}.wd-badges {display: flex;gap: 4px;flex-wrap: wrap;}.wd-badge {padding: 2px 8px;border-radius: 6px;font-size: 10px;font-weight: 600;background: var(--wd-input-bg);color: var(--wd-text-sub);display: flex;align-items: center;gap: 3px;}.wd-badge.highlight {color: var(--wd-accent);background: rgba(39,174,96,0.08);}.wd-delete-item {position: absolute;top: 8px;right: 8px;width: 26px;height: 26px;border-radius: 50%;display: flex;align-items: center;justify-content: center;background: transparent;color: var(--wd-text-sub);font-size: 14px;border: none;cursor: pointer;z-index: 10;transition: all 0.2s;opacity: 0;}.wd-list-item:hover .wd-delete-item {opacity: 0.5;}.wd-delete-item:hover {background: var(--wd-danger);color: white;opacity: 1 !important;}.wd-toggle-wrapper {display: flex;align-items: center;justify-content: space-between;margin-bottom: 8px;font-size: 11px;color: var(--wd-text);padding: 0 4px;}.wd-toggle {position: relative;display: inline-block;width: 34px;height: 18px;flex-shrink: 0;}.wd-toggle input {opacity: 0;width: 0;height: 0;}.wd-slider {position: absolute;cursor: pointer;top: 0;left: 0;right: 0;bottom: 0;background-color: #ccc;transition: .4s;border-radius: 34px;}.wd-slider:before {position: absolute;content: "";height: 14px;width: 14px;left: 2px;bottom: 2px;background-color: white;transition: .4s;border-radius: 50%;}input:checked + .wd-slider {background-color: var(--wd-accent);}input:checked + .wd-slider:before {transform: translateX(16px);}`;
+    styleEl.innerText = `:root {--wd-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;--wd-bg: rgba(255,255,255,0.95);--wd-text: #2c3e50;--wd-accent: #27ae60;--wd-accent-hover: #219150;--wd-danger: #ff4757;--wd-danger-hover: #ff6b81;--wd-border: rgba(0,0,0,0.08);--wd-item-bg: #fff;--wd-input-bg: #f1f2f6;--wd-shadow: 0 8px 30px rgba(0,0,0,0.12);--wd-item-shadow: 0 2px 8px rgba(0,0,0,0.04);--wd-header-bg: #fff;--wd-text-sub: #a4b0be;--wd-scroll: #ced6e0;color-scheme: light;}
+	[data-wd-theme="dark"] {--wd-bg: rgba(33,33,33,0.95);--wd-text: #dfe4ea;--wd-accent: #2ed573;--wd-accent-hover: #7bed9f;--wd-danger: #ff4757;--wd-danger-hover: #ff6b81;--wd-border: rgba(255,255,255,0.1);--wd-item-bg: #2f3542;--wd-input-bg: #57606f;--wd-shadow: 0 8px 30px rgba(0,0,0,0.5);--wd-item-shadow: 0 4px 12px rgba(0,0,0,0.2);--wd-header-bg: #2f3542;--wd-text-sub: #a4b0be;--wd-scroll: #747d8c;color-scheme: dark;}
+	[data-wd-theme="dark"] ::-webkit-calendar-picker-indicator {filter: invert(1);cursor: pointer;}
+	#wd-panel * {box-sizing: border-box;}
+	#wd-panel {position: fixed;top: 10vh;right: 20px;width: 320px;background: var(--wd-bg);color: var(--wd-text);border-radius: 16px;z-index: ${MAX_Z_INDEX};font-family: var(--wd-font);font-size: 13px;display: flex;flex-direction: column;max-height: 85vh;transition: all 0.4s cubic-bezier(0.25,0.8,0.25,1);border: 1px solid var(--wd-border);box-shadow: var(--wd-shadow);backdrop-filter: blur(10px);}
+	#wd-panel.wd-minimized {width: auto !important;height: 50px !important;min-width: 160px;border-radius: 25px;top: auto !important;bottom: 30px;right: 30px;cursor: pointer;background: var(--wd-accent) !important;padding: 0 20px;display: flex;align-items: center;justify-content: center;border: 2px solid rgba(255,255,255,0.2);box-shadow: 0 4px 15px rgba(39,174,96,0.5);}
+	#wd-panel.wd-minimized > * {display: none !important;}
+	#wd-panel.wd-minimized::after {content: "🗃️ Tool Manager";color: #fff;font-weight: 700;font-size: 14px;white-space: nowrap;letter-spacing: 0.5px;}
+	#wd-panel.wd-minimized:hover {transform: translateY(-5px);}
+	#wd-header {padding: 12px 16px;background: transparent;border-bottom: 1px solid var(--wd-border);display: flex;justify-content: space-between;align-items: center;user-select: none;flex-shrink: 0;}
+	.wd-title-text {font-weight: 800;font-size: 14px;color: var(--wd-accent);letter-spacing: 0.5px;}
+	.wd-actions {display: flex;gap: 8px;}
+	.wd-icon-btn {background: transparent;border: none;cursor: pointer;font-size: 16px;width: 28px;height: 28px;border-radius: 6px;color: var(--wd-text-sub);transition: 0.2s;display: flex;align-items: center;justify-content: center;}
+	.wd-icon-btn:hover {background: rgba(0,0,0,0.05);color: var(--wd-text);}
+	.wd-icon-btn.danger:hover {color: var(--wd-danger);background: rgba(231,76,60,0.1);}
+	#wd-body {padding: 12px;overflow-y: auto;overflow-x: hidden;flex-grow: 1;scrollbar-width: thin;scrollbar-color: var(--wd-scroll) transparent;scroll-behavior: smooth;will-change: scroll-position;}
+	#wd-body::-webkit-scrollbar {width: 5px;}
+	#wd-body::-webkit-scrollbar-thumb {background: var(--wd-scroll);border-radius: 10px;}
+	.wd-row {display: flex;gap: 8px;margin-bottom: 10px;width: 100%;align-items: stretch;}
+	.wd-col {flex: 1;}
+	.wd-grid-row {display: grid;grid-template-columns: 1fr 1fr;gap: 8px;margin-bottom: 10px;}
+	.wd-input-wrap {position: relative;width: 100%;height: 20px;}
+	.wd-input-icon {position: absolute;left: 0;top: 0;width: 24px;height: 100%;display: flex;align-items: center;justify-content: center;font-size: 12px;opacity: 0.7;pointer-events: none;z-index: 2;}
+	.wd-input, .wd-select {width: 100%;border: 1px solid transparent;background: var(--wd-input-bg);color: var(--wd-text);padding: 0;text-indent: 4px;font-size: 10px;border-radius: 8px;outline: none;transition: 0.2s;height: 20px;line-height: 18px;margin-bottom: 0;}
+	.wd-input-wrap .wd-input {padding: 0;padding-left: 24px;text-indent: 0;height: 100%;}
+	.wd-input:focus, .wd-select:focus {background: var(--wd-bg);border-color: var(--wd-accent);box-shadow: 0 0 0 3px rgba(39,174,96,0.1);}
+	.wd-btn {width: 100%;padding: 0;border: none;border-radius: 8px;font-weight: 700;color: #fff;cursor: pointer;font-size: 10px;text-transform: uppercase;background: var(--wd-accent);transition: 0.2s;letter-spacing: 0.5px;height: 20px;display: flex;align-items: center;justify-content: center;}
+	.wd-btn:hover {background: var(--wd-accent-hover);box-shadow: 0 4px 10px rgba(39,174,96,0.3);transform: translateY(-1px);}
+	.wd-btn:active {transform: translateY(1px);}
+	.wd-btn:disabled {opacity: 0.6;cursor: not-allowed;box-shadow: none;transform: none;}
+	.wd-btn.danger {background: var(--wd-danger);}
+	.wd-btn.danger:hover {background: var(--wd-danger-hover);box-shadow: 0 4px 10px rgba(231,76,60,0.3);}
+	.wd-io-btn {font-size: 10px;padding: 0 8px;border: 1px solid var(--wd-border);background: var(--wd-input-bg);color: var(--wd-text);border-radius: 6px;cursor: pointer;transition: 0.2s;height: 20px;display: flex;align-items: center;justify-content: center;}
+	.wd-io-btn:hover {border-color: var(--wd-accent);color: var(--wd-accent);}
+	#wd-toast {visibility: hidden;min-width: 200px;background-color: rgba(47,53,66,0.95);backdrop-filter: blur(5px);color: #fff;text-align: center;border-radius: 50px;padding: 10px 24px;position: fixed;z-index: ${MAX_Z_INDEX};left: 50%;bottom: 30px;transform: translateX(-50%) translateY(20px);font-family: var(--wd-font);font-size: 13px;font-weight: 500;box-shadow: 0 10px 30px rgba(0,0,0,0.2);opacity: 0;transition: all 0.3s;}
+	#wd-toast.show {visibility: visible;transform: translateX(-50%) translateY(0);opacity: 1;}
+	#wd-chapter-panel {position: fixed;top: 100px;left: 20px;z-index: ${MAX_Z_INDEX};background: var(--wd-bg);color: var(--wd-text);border-left: 4px solid var(--wd-accent);padding: 10px 18px;border-radius: 0 12px 12px 0;box-shadow: var(--wd-shadow);font-family: var(--wd-font);font-size: 13px;font-weight: 600;display: flex;align-items: center;gap: 8px;transition: all 0.3s;cursor: default;backdrop-filter: blur(10px);max-width: 300px;overflow: hidden;}
+	#wd-chapter-panel:hover {transform: translateX(5px);}
+	#wd-chapter-panel span.num {color: var(--wd-danger);font-size: 16px;font-weight: 700;}
+	#wd-chapter-panel .wd-close {cursor: pointer;margin-left: 8px;opacity: 0.4;font-size: 10px;padding: 4px;}
+	#wd-chapter-panel .wd-close:hover {opacity: 1;background: rgba(0,0,0,0.1);border-radius: 50%;}
+	#wd-chapter-panel.wd-collapsed {width: 40px;height: 40px;padding: 0;justify-content: center;border-radius: 50%;background: var(--wd-bg);border: 2px solid var(--wd-accent);cursor: pointer;}
+	#wd-chapter-panel.wd-collapsed .wd-content,#wd-chapter-panel.wd-collapsed .wd-close {display: none !important;}
+	#wd-chapter-panel.wd-collapsed::after {content: "🗃️";font-size: 20px;}
+	#wd-result-list {margin-top: 10px;position: relative;}
+	#wd-virtual-container {position: relative;will-change: transform;width: 100%;}
+	.wd-list-item {width: 100%;background: var(--wd-item-bg);padding: 10px;margin-bottom: 5px;border-radius: 10px;box-shadow: var(--wd-item-shadow);transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out;border: 1px solid var(--wd-border);position: absolute;overflow: hidden;will-change: transform;contain: layout style paint;}
+	.wd-list-item:hover {transform: translateY(-2px);box-shadow: 0 5px 15px rgba(0,0,0,0.08);border-color: rgba(39,174,96,0.3);}
+	.wd-item-title {display: block;font-weight: 700;font-size: 13px;color: var(--wd-text);text-decoration: none;margin-bottom: 4px;white-space: nowrap;overflow: hidden;text-overflow: ellipsis;padding-right: 25px;}
+.wd-item-title:hover {color: var(--wd-accent);}
+.wd-item-meta {font-size: 11px;color: var(--wd-text-sub);margin-bottom: 6px;display: flex;justify-content: space-between;align-items: center;}
+.wd-badges {display: flex;gap: 4px;flex-wrap: wrap;}
+.wd-badge {padding: 2px 8px;border-radius: 6px;font-size: 10px;font-weight: 600;background: var(--wd-input-bg);color: var(--wd-text-sub);display: flex;align-items: center;gap: 3px;}
+.wd-badge.highlight {color: var(--wd-accent);background: rgba(39,174,96,0.08);}
+.wd-delete-item {position: absolute;top: 8px;right: 8px;width: 26px;height: 26px;border-radius: 50%;display: flex;align-items: center;justify-content: center;background: transparent;color: var(--wd-text-sub);font-size: 14px;border: none;cursor: pointer;z-index: 10;transition: all 0.2s;opacity: 0;}
+.wd-list-item:hover .wd-delete-item {opacity: 0.5;}
+.wd-delete-item:hover {background: var(--wd-danger);color: white;opacity: 1 !important;}
+.wd-toggle-wrapper {display: flex;align-items: center;justify-content: space-between;margin-bottom: 8px;font-size: 11px;color: var(--wd-text);padding: 0 4px;}
+.wd-toggle {position: relative;display: inline-block;width: 34px;height: 18px;flex-shrink: 0;}
+.wd-toggle input {opacity: 0;width: 0;height: 0;}
+.wd-slider {position: absolute;cursor: pointer;top: 0;left: 0;right: 0;bottom: 0;background-color: #ccc;transition: .4s;border-radius: 34px;}
+.wd-slider:before {position: absolute;content: "";height: 14px;width: 14px;left: 2px;bottom: 2px;background-color: white;transition: .4s;border-radius: 50%;}
+input:checked + .wd-slider {background-color: var(--wd-accent);}
+input:checked + .wd-slider:before {transform: translateX(16px);}`;
     document.head.appendChild(styleEl);
     const toast = document.createElement("div");
     toast.id = "wd-toast";
@@ -379,7 +470,18 @@
         const panel = document.createElement("div");
         panel.id = "wd-panel";
         panel.className = "wd-minimized";
-        panel.innerHTML = `<div id="wd-header"><span class="wd-title-text">🗃️ TOOL MANAGER</span><div class="wd-actions"><button id="wd-theme-toggle" class="wd-icon-btn" title="Giao diện">☀️</button><button id="wd-minimize-btn" class="wd-icon-btn" title="Thu nhỏ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div></div><div id="wd-body"><div class="wd-grid-row"><div class="wd-input-wrap"><span class="wd-input-icon">⚡</span><input type="number" id="wd-cfg-batch" class="wd-input" value="3" min="1" max="3"title="Max random số trang tải cùng lúc."></div><div class="wd-input-wrap"><span class="wd-input-icon">⏳</span><input type="number" id="wd-cfg-delay" class="wd-input" value="1000" step="500"title="Thời gian nghỉ (ms). 1000ms là nghỉ 1s giữa mỗi lượt tải"></div></div><div class="wd-row"><button id="wd-sync-btn" class="wd-btn" style="flex-grow:1;">🔄 ĐỒNG BỘ</button><button id="wd-clear-all-btn" class="wd-btn danger" style="width: 44px;" title="Xoá sạch">🗑️</button></div><div class="wd-row"><button id="wd-export-btn" class="wd-io-btn" style="flex:1">📤 XUẤT</button><button id="wd-import-btn" class="wd-io-btn" style="flex:1">📥 NHẬP</button><button id="wd-help-btn" class="wd-io-btn" style="width:30px;padding:0" title="Hướng dẫn">❓</button></div><div class="wd-toggle-wrapper" id="wd-setting-wrapper"title="Nếu tắt, script sẽ không tự động cập nhật truyện tag Hoàn thành đã lưu trong kho, giúp tiết kiệm năng lượng"><span>Tự động cập nhật truyện tag Hoàn thành</span><label class="wd-toggle"><input type="checkbox" id="wd-setting-autoupdate"><span class="wd-slider"></span></label></div><div id="wd-status-msg" style="text-align:center;font-size:11px;color:var(--wd-text-sub);margin-bottom:2px;font-style:italic;">Sẵn sàng.</div><div id="wd-today-stats" style="text-align:center;font-size:11px;color:var(--wd-accent);margin-bottom:8px;font-weight:600;"></div><input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tìm tên truyện..."><div class="wd-row"><div class="wd-col"><select id="wd-filter-status" class="wd-select browser-default"><option value="all">Tất cả</option><option value="Còn tiếp">Còn tiếp</option><option value="Hoàn thành">Hoàn thành</option><option value="Tạm ngưng">Tạm ngưng</option><option value="Chưa xác minh">Chưa xác minh</option></select></div><div class="wd-col"><select id="wd-sort" class="wd-select browser-default"><option value="newest">🆕 Mới nhất</option><option value="oldest">🦖 Cũ nhất</option><option value="view">👀 Lượt xem</option><option value="rating">⭐ Đánh giá</option><option value="comment">💬 Bình luận</option><option value="thanks">🩷 Cảm ơn</option></select></div></div><div class="wd-row" style="margin-bottom:0;"><input type="date" id="wd-date-from" class="wd-input" style="margin:0" title="Từ ngày"><input type="date" id="wd-date-to" class="wd-input" style="margin:0" title="Đến ngày"></div><div id="wd-result-list"></div></div>`;
+        panel.innerHTML = `<div id="wd-header"><span class="wd-title-text">🗃️ TOOL MANAGER</span><div class="wd-actions"><button id="wd-theme-toggle" class="wd-icon-btn" title="Giao diện">☀️</button><button id="wd-minimize-btn" class="wd-icon-btn" title="Thu nhỏ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div></div>
+<div id="wd-body"><div class="wd-grid-row"><div class="wd-input-wrap"><span class="wd-input-icon">⚡</span><input type="number" id="wd-cfg-batch" class="wd-input" value="3" min="1" max="3"title="Max random số trang tải cùng lúc."></div>
+<div class="wd-input-wrap"><span class="wd-input-icon">⏳</span><input type="number" id="wd-cfg-delay" class="wd-input" value="1000" step="500"title="Thời gian nghỉ (ms). 1000ms là nghỉ 1s giữa mỗi lượt tải"></div></div>
+<div class="wd-row"><button id="wd-sync-btn" class="wd-btn" style="flex-grow:1;">🔄 ĐỒNG BỘ</button><button id="wd-clear-all-btn" class="wd-btn danger" style="width: 44px;" title="Xoá sạch">🗑️</button></div>
+<div class="wd-row"><button id="wd-export-btn" class="wd-io-btn" style="flex:1">📤 XUẤT</button><button id="wd-import-btn" class="wd-io-btn" style="flex:1">📥 NHẬP</button><button id="wd-help-btn" class="wd-io-btn" style="width:30px;padding:0" title="Hướng dẫn">❓</button></div>
+<div class="wd-toggle-wrapper" id="wd-setting-wrapper"title="Nếu tắt, script sẽ không tự động cập nhật truyện tag Hoàn thành đã lưu trong kho, giúp tiết kiệm năng lượng"><span>Tự động cập nhật truyện tag Hoàn thành</span><label class="wd-toggle"><input type="checkbox" id="wd-setting-autoupdate"><span class="wd-slider"></span></label></div>
+<div id="wd-status-msg" style="text-align:center;font-size:11px;color:var(--wd-text-sub);margin-bottom:2px;font-style:italic;">Sẵn sàng.</div>
+<div id="wd-today-stats" style="text-align:center;font-size:11px;color:var(--wd-accent);margin-bottom:8px;font-weight:600;"></div>
+<input type="text" id="wd-search" class="wd-input" placeholder="🔍 Tìm tên truyện..."><div class="wd-row"><div class="wd-col"><select id="wd-filter-status" class="wd-select browser-default"><option value="all">Tất cả</option><option value="Còn tiếp">Còn tiếp</option><option value="Hoàn thành">Hoàn thành</option><option value="Tạm ngưng">Tạm ngưng</option><option value="Chưa xác minh">Chưa xác minh</option></select></div>
+<div class="wd-col"><select id="wd-sort" class="wd-select browser-default"><option value="newest">🆕 Mới nhất</option><option value="oldest">🦖 Cũ nhất</option><option value="view">👀 Lượt xem</option><option value="rating">⭐ Đánh giá</option><option value="comment">💬 Bình luận</option><option value="thanks">🩷 Cảm ơn</option></select></div></div>
+<div class="wd-row" style="margin-bottom:0;"><input type="date" id="wd-date-from" class="wd-input" style="margin:0" title="Từ ngày"><input type="date" id="wd-date-to" class="wd-input" style="margin:0" title="Đến ngày"></div>
+<div id="wd-result-list"></div></div>`;
         document.body.appendChild(panel);
         const batchInput = document.getElementById("wd-cfg-batch");
         batchInput.addEventListener("change", () => {
@@ -458,6 +560,25 @@
         };
         async function initList() {
             GLOBAL_CACHE = await db.getAll();
+            if (GLOBAL_CACHE.length === 0) {
+                const clearedTs = parseInt(localStorage.getItem(CLEAR_FLAG_KEY) || "0", 10);
+                const recentlyClearedIntentionally = clearedTs && Date.now() - clearedTs < BACKUP_DEBOUNCE_MS;
+                if (!recentlyClearedIntentionally) {
+                    try {
+                        const raw = GM_getValue(GM_BACKUP_KEY, null);
+                        if (raw) {
+                            const backupItems = JSON.parse(raw);
+                            if (Array.isArray(backupItems) && backupItems.length > 0) {
+                                await db.putBulk(backupItems);
+                                GLOBAL_CACHE = await db.getAll();
+                                showToast(`♻️ Đã tự phục hồi ${GLOBAL_CACHE.length} truyện từ backup`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Khôi phục từ GM storage thất bại:", e);
+                    }
+                }
+            }
             renderList();
         }
         let currentTheme = localStorage.getItem(THEME_KEY) === "dark";
@@ -546,9 +667,7 @@
                     });
                     if (starts.length > 0) maxStart = Math.max(...starts);
                 }
-                // Đếm số truyện thực tế trên trang đầu
                 const firstPageCount = docFirst.querySelectorAll(".book-info").length;
-                // Fetch trang cuối để đếm số truyện thực tế (nếu chỉ có 1 trang thì trang đầu = trang cuối)
                 let lastPageCount = firstPageCount;
                 if (maxStart > 0) {
                     try {
@@ -561,7 +680,6 @@
                     }
                 }
                 const totalCount = maxStart + lastPageCount;
-                // pageStart = vị trí bắt đầu của trang trong danh sách tổng
                 const processDoc = (doc, pageStart) => {
                     const els = doc.querySelectorAll(".book-info");
                     els.forEach((el, i) => {
@@ -602,7 +720,6 @@
                     await db.putBulk(merged);
                     buffer = [];
                 };
-                // Xử lý và lưu trang đầu ngay lập tức
                 processDoc(docFirst, 0);
                 await flushBuffer();
                 let urlsToFetch = [];
@@ -651,7 +768,6 @@
                         await new Promise((r) => setTimeout(r, randomDelay));
                     }
                 }
-                // Retry các trang lỗi, mỗi trang retry thêm 5 lần với delay tăng dần
                 if (failedPages.length > 0) {
                     const totalFailed = failedPages.length;
                     for (let fi = 0; fi < failedPages.length; fi++) {
@@ -698,7 +814,8 @@
         function createItemElement(book) {
             const d = document.createElement("div");
             d.className = "wd-list-item";
-            d.innerHTML = `<button class="wd-delete-item" title="Xoá"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><a href="${book.link}" target="_blank" class="wd-item-title" title="${book.title}">${book.title}</a><div class="wd-item-meta"><span>${book.status} • ${book.chapter <= 0 ? "N/A" : book.chapter.toLocaleString() + " chương"}</span><span>${book.updateDate}</span></div><div class="wd-badges"><span class="wd-badge highlight">👀 ${book.view > 1000 ? (book.view / 1000).toFixed(1) + "k" : book.view}</span><span class="wd-badge highlight">⭐ ${book.rating}</span><span class="wd-badge highlight">💬 ${book.comment}</span>${book.thanks ? `<span class="wd-badge highlight">🩷 ${book.thanks}</span>` : ""}</div>`;
+            d.innerHTML = `<button class="wd-delete-item" title="Xoá"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><a href="${book.link}" target="_blank" class="wd-item-title" title="${book.title}">${book.title}</a><div class="wd-item-meta"><span>${book.status} • ${book.chapter <= 0 ? "N/A" : book.chapter.toLocaleString() + " chương"}</span><span>${book.updateDate}</span></div>
+<div class="wd-badges"><span class="wd-badge highlight">👀 ${book.view > 1000 ? (book.view / 1000).toFixed(1) + "k" : book.view}</span><span class="wd-badge highlight">⭐ ${book.rating}</span><span class="wd-badge highlight">💬 ${book.comment}</span>${book.thanks ? `<span class="wd-badge highlight">🩷 ${book.thanks}</span>` : ""}</div>`;
             d.querySelector(".wd-delete-item").onclick = async (e) => {
                 e.stopPropagation();
                 if (confirm(`Xoá "${book.title}"?`)) {
