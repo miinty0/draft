@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.6
+// @version      1.6.1
 // @history      Tự điền tổng số chương, mở rộng tag lên tối đa 10 tag, cho phép user custom tag
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -68,7 +68,7 @@ const isWiki =
     const hasPagination = !!document.querySelector('.volume-list .pagination a[data-action="loadBookIndex"][data-start][data-size]');
     return chapters < 501 || hasPagination;
   }
-  function waitForWikiIndex(minMs = 5000, maxMs = 10000) {
+  function waitForWikiIndex(minMs = 0, maxMs = 10000) {
     return new Promise(resolve => {
       const started = Date.now();
       let finished = false, queued = null;
