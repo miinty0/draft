@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.6.1
-// @history      Tự điền tổng số chương, mở rộng tag lên tối đa 10 tag, cho phép user custom tag
+// @version      1.6.5
+// @history      Sửa lại các nút bấm để hiển thị, không bị CSS chặn nữa
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -196,22 +196,31 @@ const isWiki =
   function tagsOf(d) {
     return [...new Set(Array.isArray(d.tags) ? d.tags : [d.status || 'wait'])].filter(id => getTags().some(t => t.id === id)).slice(0,5);
   }
-  function changeTags(ids, tagId, action) {
+  function changeTags(ids, tagId, action, original = null) {
     const list = getsxxnl();
     let limited = 0, changed = 0, alreadyHad = 0;
     list.forEach(d => {
       if (!ids.has(d.id)) return;
       const tags = tagsOf(d);
-      if (action === 'add' && tags.includes(tagId)) { alreadyHad++; return; }
-      const next = action === 'remove' ? tags.filter(t => t !== tagId) : [...new Set([...tags, tagId])];
+      if (action === 'restore' && !original?.has(d.id)) return;
+      if (action !== 'restore' && original && !original.has(d.id)) {
+        original.set(d.id, tags.includes(tagId));
+      }
+      const shouldHave = action === 'restore' ? original.get(d.id) : action === 'add';
+      if (tags.includes(tagId) === shouldHave) {
+        if (action === 'add') alreadyHad++;
+        if (action === 'restore') original.delete(d.id);
+        return;
+      }
+      const next = shouldHave ? [...tags, tagId] : tags.filter(t => t !== tagId);
       if (next.length > 5) { limited++; return; }
-      if (next.length === tags.length) return;
       d.tags = next;
-      d.status = next[0] || 'wait'; 
+      d.status = next[0] || 'wait';
       changed++;
+      if (action === 'restore') original.delete(d.id);
     });
     if (changed) savesxxnl(list);
-    if (limited) showNotification(`${limited} đơn đã đủ 5 tag`);
+    if (limited && !original) showNotification(`${limited} đơn đã đủ 5 tag`);
     if (changed) renderTab2();
     return { changed, limited, alreadyHad };
   }
@@ -454,7 +463,34 @@ function validateDateField(val) {
     }
     .sxxnl-actions > * { flex: 0 0 auto; }
     .sxxnl-actions .sxxnl-toolbar-btn { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
-    .sxxnl-actions .sxxnl-select { width: 104px; min-width: 0; padding: 6px 4px; font-size: 11px; }
+    #sxxnl-panel .sxxnl-select-all {
+      display: inline-flex; align-items: center; gap: 5px;
+      margin: 0; color: #475569; font-size: 11px; font-weight: 600;
+      white-space: nowrap; cursor: pointer;
+    }
+    /* WikiCV/Materialize ẩn checkbox gốc; hiển thị checkbox native trong panel. */
+    #sxxnl-panel input[type="checkbox"].sxxnl-checkbox {
+      display: inline-block !important; position: static !important;
+      visibility: visible !important; opacity: 1 !important;
+      pointer-events: auto !important; -webkit-appearance: auto !important;
+      appearance: auto !important; transform: none !important;
+      flex: 0 0 16px; width: 16px !important; height: 16px !important;
+      margin: 0 !important; padding: 0 !important;
+      cursor: pointer; accent-color: #2563eb; vertical-align: middle;
+    }
+    .sxxnl-checkbox-shell { display: inline-flex; flex: 0 0 16px; align-items: center; }
+    .sxxnl-bulk-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+      white-space: nowrap;
+    }
+    .sxxnl-bulk-row label { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #475569; }
+    #sxxnl-panel .sxxnl-bulk-row select.sxxnl-select {
+      flex: 1 1 0; min-width: 0; width: 100%; padding: 6px 5px; font-size: 11px;
+    }
+    #sxxnl-panel .sxxnl-bulk-row select.sxxnl-bulk-action {
+      flex: 0 0 91px; width: 91px; padding: 6px 2px; font-size: 11px;
+    }
+    .sxxnl-bulk-row .sxxnl-toolbar-btn { flex: 0 0 auto; padding: 6px 8px; font-size: 11px; }
     .sxxnl-toolbar-btn {
       padding: 7px 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
       background: #fff; cursor: pointer; font-size: 12.5px; color: #444;
@@ -466,6 +502,11 @@ function validateDateField(val) {
       padding: 7px 10px; border: 1.5px solid #e0e0e0; border-radius: 8px;
       font-size: 12.5px; color: #444; background: #fff; font-family: inherit;
       box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer;
+    }
+    #sxxnl-panel select.sxxnl-select {
+      display: inline-block !important; visibility: visible !important;
+      opacity: 1 !important; pointer-events: auto !important;
+      -webkit-appearance: menulist !important; appearance: menulist !important;
     }
     .sxxnl-select:focus { outline: none; border-color: #2563eb; }
     .sxxnl-search {
@@ -510,7 +551,38 @@ function validateDateField(val) {
     .sxxnl-badge.wait   { background: #fff1f2; color: #dc2626; border: 1px solid #fca5a5; }
     .sxxnl-badge.link { background: #fefce8; color: #ca8a04; border: 1px solid #fde047; }
     .sxxnl-badges { display:flex;flex-wrap:wrap;gap:3px;justify-content:center; }
-    .sxxnl-card-tag-select { max-width:120px;padding:3px;font-size:11px; }
+    #sxxnl-panel .sxxnl-tag-control {
+      flex: 1; min-width: 0; height: 34px; position: relative;
+      display: flex; align-items: center; gap: 7px; box-sizing: border-box;
+      padding: 0 10px; border: 1px solid #dbe3ef; border-radius: 8px;
+      background: #fff; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    #sxxnl-panel .sxxnl-tag-control:focus-within {
+      border-color: #2563eb; box-shadow: 0 0 0 2px #2563eb1c;
+    }
+    .sxxnl-tag-control-label { flex: none; font-size: 11px; font-weight: 600; color: #64748b; }
+    #sxxnl-panel .sxxnl-tag-control select.sxxnl-card-tag-select {
+      flex: 1; min-width: 0; width: 100%; max-width: none; height: 32px !important;
+      margin: 0 !important; padding: 0 19px 0 8px !important;
+      border: 0 !important; border-radius: 0 !important;
+      background: transparent !important; box-shadow: none !important;
+      color: #334155 !important; font-size: 12px !important;
+      font-family: inherit !important; line-height: 32px !important;
+      -webkit-appearance: none !important; appearance: none !important;
+    }
+    #sxxnl-panel .sxxnl-tag-control select.sxxnl-card-tag-select:focus { outline: none; }
+    #sxxnl-panel .sxxnl-tag-control select.sxxnl-card-tag-select option {
+      padding-left: 8px;
+    }
+    #sxxnl-panel .sxxnl-tag-control select.sxxnl-card-tag-select.sxxnl-placeholder,
+    #sxxnl-panel .sxxnl-bulk-row select.sxxnl-select.sxxnl-placeholder {
+      color: #a0aec0 !important;
+    }
+    #sxxnl-panel select.sxxnl-placeholder option { color: #334155; }
+    .sxxnl-tag-control-chevron {
+      position: absolute; right: 12px; pointer-events: none;
+      font-size: 11px; color: #64748b;
+    }
     .sxxnl-tag-manager-row { display:flex;align-items:center;gap:6px;margin:7px 0; }
     .sxxnl-tag-manager-row input[type=text] { min-width:0;flex:1;padding:6px; }
     .sxxnl-tag-manager-row input[type=color] { width:35px;height:30px;padding:1px; }
@@ -620,14 +692,21 @@ function validateDateField(val) {
       padding: 9px 16px; border: 1.5px solid #e0e0e0; border-radius: 9px;
       background: #fff; font-size: 13px; cursor: pointer; font-family: inherit; color: #555;
     }
-    .sxxnl-don-actions { display: flex; gap: 3px; flex-shrink: 0; }
-    .sxxnl-don-action-btn {
-      background: none; border: 1px solid #e0e0e0; border-radius: 5px;
-      font-size: 13px; padding: 1px 4px; cursor: pointer; color: #888;
-      font-family: inherit; transition: all 0.15s; line-height: 1;
-      white-space: nowrap; overflow: hidden;
+    #sxxnl-panel .sxxnl-don-actions {
+      display: flex; align-items: center; gap: 7px;
+      width: 100%; box-sizing: border-box; padding: 0 10px 10px;
     }
-    .sxxnl-don-action-btn:hover { border-color: #2563eb; background: #eff6ff; }
+    #sxxnl-panel .sxxnl-don-action-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 34px; width: 34px; height: 34px; margin: 0; padding: 0;
+      background: #eff6ff; border: 1px solid #dbeafe; border-radius: 8px;
+      font-size: 15px; cursor: pointer; color: #2563eb;
+      font-family: inherit; transition: all 0.15s; line-height: 1;
+    }
+    #sxxnl-panel .sxxnl-don-action-btn:hover,
+    #sxxnl-panel .sxxnl-don-action-btn:focus {
+      border-color: #93c5fd; background: #dbeafe; outline: none;
+    }
     .sxxnl-don-action-btn.undone:hover { border-color: #f59e0b; background: #fef9c3; }
     /* Info popover */
     #sxxnl-info-popover {
@@ -1504,6 +1583,9 @@ function validateDateField(val) {
   };
   let tab2Filter = 'all';
   let tab2TagFilter = 'all';
+  let tab2BatchTagId = '';
+  let tab2BatchAction = 'add';
+  const bulkTagOriginals = new Map();
   let tab2Sort = 'oldest';
   let tab2Search = '';
   let selectedIds = new Set();
@@ -1584,11 +1666,15 @@ function validateDateField(val) {
     };
     const cbAll = document.createElement('input');
     cbAll.type = 'checkbox';
+    cbAll.className = 'sxxnl-checkbox';
     cbAll.title = 'Chọn tất cả';
-    toolbar.appendChild(cbAll);
+    const selectAllLabel = document.createElement('label');
+    selectAllLabel.className = 'sxxnl-select-all';
+    selectAllLabel.append(cbAll, document.createTextNode('Tất cả'));
+    toolbar.appendChild(selectAllLabel);
     // Filter dropdown
     const filterSel = document.createElement('select');
-    filterSel.className = 'sxxnl-select';
+    filterSel.className = 'sxxnl-select browser-default';
     FILTER_OPTIONS.forEach(opt => {
       const o = document.createElement('option');
       o.value = opt.value; o.textContent = opt.label;
@@ -1598,8 +1684,8 @@ function validateDateField(val) {
     filterSel.addEventListener('change', () => { tab2Filter = filterSel.value; selectedIds.clear(); renderTab2(); });
     addFilter('Loại đơn', filterSel);
     const tagFilter = document.createElement('select');
-    tagFilter.className = 'sxxnl-select';
-    const allTags = document.createElement('option'); allTags.value = 'all'; allTags.textContent = 'Tất cả tag'; tagFilter.appendChild(allTags);
+    tagFilter.className = 'sxxnl-select browser-default';
+    const allTags = document.createElement('option'); allTags.value = 'all'; allTags.textContent = 'Tất cả'; tagFilter.appendChild(allTags);
     getTags().forEach(t => { const o = document.createElement('option'); o.value=t.id; o.textContent=t.name; tagFilter.appendChild(o); });
     tagFilter.value = tab2TagFilter;
     tagFilter.title = 'Lọc tag cùng với bộ lọc loại đơn (AND)';
@@ -1607,7 +1693,7 @@ function validateDateField(val) {
     addFilter('🏷 Lọc tag', tagFilter);
     // Sort dropdown
     const sortSel = document.createElement('select');
-    sortSel.className = 'sxxnl-select';
+    sortSel.className = 'sxxnl-select browser-default';
     [['newest','Mới nhất'],['oldest','Cũ nhất']].forEach(([v,l]) => {
       const o = document.createElement('option');
       o.value = v; o.textContent = l;
@@ -1618,7 +1704,7 @@ function validateDateField(val) {
     addFilter('Sắp xếp', sortSel);
     const btnCopy = document.createElement('button');
     btnCopy.className = 'sxxnl-toolbar-btn';
-    btnCopy.textContent = '📋 Copy';
+    btnCopy.textContent = '📋 Sao chép';
     btnCopy.title = 'Sao chép các đơn đã chọn';
     btnCopy.addEventListener('click', async () => {
       const visible = getVisibleDons();
@@ -1633,25 +1719,62 @@ function validateDateField(val) {
       } catch (e) { console.error('[sxxnl] Sao chép thất bại:', e); showNotification('❌ Không sao chép được: ' + e.message); }
     });
     toolbar.appendChild(btnCopy);
+    const bulkRow = document.createElement('div');
+    bulkRow.className = 'sxxnl-bulk-row';
+    const bulkLabel = document.createElement('label');
+    bulkLabel.htmlFor = 'sxxnl-bulk-tag';
+    bulkLabel.textContent = 'Tag:';
     const batchTag = document.createElement('select');
-    batchTag.className = 'sxxnl-select';
+    batchTag.id = 'sxxnl-bulk-tag';
+    batchTag.className = 'sxxnl-select browser-default';
     const prompt = document.createElement('option'); prompt.value=''; prompt.textContent='Chọn tag…'; batchTag.appendChild(prompt);
-    batchTag.title = 'Tag để gắn hàng loạt cho các đơn đang chọn';
+    batchTag.title = 'Tag để thêm hàng loạt cho các đơn đang chọn';
     getTags().forEach(t => { const o=document.createElement('option'); o.value=t.id; o.textContent=t.name; batchTag.appendChild(o); });
-    toolbar.appendChild(batchTag);
-    const batchAddBtn = document.createElement('button');
-    batchAddBtn.className = 'sxxnl-toolbar-btn';
-    batchAddBtn.textContent = '➕ Gắn tag';
-    batchAddBtn.title = 'Gắn tag đã chọn cho mọi đơn đang được đánh dấu trong danh sách hiển thị';
-    batchAddBtn.addEventListener('click', () => {
-      if (!batchTag.value) { showNotification('Hãy chọn một tag để thêm.'); return; }
+    if (!getTags().some(t => t.id === tab2BatchTagId)) tab2BatchTagId = '';
+    batchTag.value = tab2BatchTagId;
+    batchTag.classList.toggle('sxxnl-placeholder', !batchTag.value);
+    batchTag.addEventListener('change', () => {
+      tab2BatchTagId = batchTag.value;
+      batchTag.classList.toggle('sxxnl-placeholder', !batchTag.value);
+    });
+    const batchAction = document.createElement('select');
+    batchAction.className = 'sxxnl-select browser-default sxxnl-bulk-action';
+    [['add','＋ Thêm tag'], ['remove','− Gỡ tag'], ['restore','↶ Khôi phục lại']].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = label;
+      batchAction.appendChild(option);
+    });
+    batchAction.value = tab2BatchAction;
+    batchAction.title = 'Khôi phục lại: khôi phục tag này cho các truyện đã sửa hàng loạt trong phiên hiện tại';
+    batchAction.setAttribute('aria-label', 'Thao tác tag hàng loạt');
+    batchAction.addEventListener('change', () => { tab2BatchAction = batchAction.value; });
+    bulkRow.append(bulkLabel, batchTag, batchAction);
+    const batchApplyBtn = document.createElement('button');
+    batchApplyBtn.className = 'sxxnl-toolbar-btn';
+    batchApplyBtn.textContent = '✔️';
+    batchApplyBtn.title = 'Áp dụng thao tác tag cho các truyện đã chọn';
+    batchApplyBtn.addEventListener('click', () => {
+      const tagId = batchTag.value;
+      if (!tagId) { showNotification('Hãy chọn một tag.'); return; }
+      const action = batchAction.value;
+      const tagName = getTags().find(t => t.id === tagId)?.name || tagId;
+      if (action === 'restore') {
+        const original = bulkTagOriginals.get(tagId);
+        if (!original?.size) { showNotification(`Chưa có thay đổi hàng loạt nào để khôi phục tag ${tagName}.`); return; }
+        const total = original.size;
+        const { changed, limited } = changeTags(new Set(original.keys()), tagId, 'restore', original);
+        if (!original.size) bulkTagOriginals.delete(tagId);
+        showNotification(`↶ Tag ${tagName}: ${total - original.size}/${total} đơn về như cũ${changed ? ` (${changed} thay đổi)` : ''}${limited ? `; ${limited} đơn đã đủ 5 tag` : ''}.`);
+        return;
+      }
       const visibleSelected = new Set(getVisibleDons().filter(d => selectedIds.has(d.id)).map(d => d.id));
       if (!visibleSelected.size) { showNotification('Chưa chọn đơn nào trong danh sách đang hiển thị!'); return; }
-      const tagName = getTags().find(t => t.id === batchTag.value)?.name || batchTag.value;
-      const { changed, limited, alreadyHad } = changeTags(visibleSelected, batchTag.value, 'add');
-      showNotification(`✓ Gắn tag ${tagName}: ${changed}/${visibleSelected.size} đơn${alreadyHad ? `; ${alreadyHad} đã có tag` : ''}${limited ? `; ${limited} đã đủ 5 tag` : ''}`);
+      if (!bulkTagOriginals.has(tagId)) bulkTagOriginals.set(tagId, new Map());
+      const { changed, limited, alreadyHad } = changeTags(visibleSelected, tagId, action, bulkTagOriginals.get(tagId));
+      const verb = action === 'add' ? 'Thêm' : 'Gỡ';
+      showNotification(`✓ ${verb} tag ${tagName}: ${changed}/${visibleSelected.size} đơn${alreadyHad ? `; ${alreadyHad} đã có tag` : ''}${limited ? `; ${limited} đã đủ 5 tag` : ''}`);
     });
-    toolbar.appendChild(batchAddBtn);
+    bulkRow.appendChild(batchApplyBtn);
     const manageBtn = document.createElement('button');
     manageBtn.className='sxxnl-toolbar-btn'; manageBtn.textContent='⚙️ Tag';
     manageBtn.title = 'Quản lý tên và màu tag';
@@ -1669,7 +1792,8 @@ function validateDateField(val) {
       renderTab2();
     });
     toolbar.appendChild(btnDel);
-    content2.append(filterRow, toolbar);
+    content2.append(filterRow, bulkRow, toolbar);
+    // Row 2: search + count
     const toolbar2 = document.createElement('div');
     toolbar2.className = 'sxxnl-toolbar';
     const searchInput = document.createElement('input');
@@ -1713,11 +1837,16 @@ function validateDateField(val) {
       header.className = 'sxxnl-don-header';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
+      cb.className = 'sxxnl-checkbox';
       cb.checked = selectedIds.has(don.id);
       cb.addEventListener('change', () => {
         if (cb.checked) selectedIds.add(don.id); else selectedIds.delete(don.id);
+        item.classList.toggle('selected-card', cb.checked);
         syncCbAll();
       });
+      const cbShell = document.createElement('span');
+      cbShell.className = 'sxxnl-checkbox-shell';
+      cbShell.appendChild(cb);
       const body = document.createElement('div');
       body.className = 'sxxnl-don-body';
       const text = donToText(don);
@@ -1744,7 +1873,7 @@ function validateDateField(val) {
         badges.appendChild(badge);
       });
       header.addEventListener('click', (e) => {
-        if (e.target === cb || e.target === title || title.contains(e.target)) return;
+        if (cbShell.contains(e.target) || e.target === title || title.contains(e.target)) return;
         cb.checked = !cb.checked;
         if (cb.checked) { selectedIds.add(don.id); item.classList.add('selected-card'); }
         else { selectedIds.delete(don.id); item.classList.remove('selected-card'); }
@@ -1757,31 +1886,43 @@ function validateDateField(val) {
       btnEdit.className = 'sxxnl-don-action-btn';
       btnEdit.textContent = '✏️';
       btnEdit.title = 'Sửa đơn';
+      btnEdit.setAttribute('aria-label', 'Sửa đơn');
       btnEdit.addEventListener('click', (e) => { e.stopPropagation(); openEditModal(don); });
       actions.appendChild(btnEdit);
       const tagSelect = document.createElement('select');
-      tagSelect.className = 'sxxnl-select sxxnl-card-tag-select';
-      const selectPrompt = document.createElement('option'); selectPrompt.value=''; selectPrompt.textContent='Chọn tag…'; tagSelect.appendChild(selectPrompt);
+      tagSelect.className = 'sxxnl-select browser-default sxxnl-card-tag-select sxxnl-placeholder';
+      const selectPrompt = document.createElement('option'); selectPrompt.value=''; selectPrompt.textContent='\u00a0\u00a0Chọn tag…'; tagSelect.appendChild(selectPrompt);
       getTags().forEach(t => {
         const option = document.createElement('option'); option.value=t.id;
-        option.textContent = `${tagsOf(don).includes(t.id) ? '✓ ' : ''}${t.name}`;
+        option.textContent = `\u00a0\u00a0${tagsOf(don).includes(t.id) ? '✓ ' : ''}${t.name}\u00a0\u00a0`;
         tagSelect.appendChild(option);
       });
       tagSelect.addEventListener('click', e => e.stopPropagation());
       tagSelect.addEventListener('change', e => {
         e.stopPropagation();
+        tagSelect.classList.toggle('sxxnl-placeholder', !tagSelect.value);
         const tagId = tagSelect.value;
         if (tagId) changeTags(new Set([don.id]), tagId, tagsOf(don).includes(tagId) ? 'remove' : 'add');
       });
-      actions.appendChild(tagSelect);
+      const tagControl = document.createElement('div');
+      tagControl.className = 'sxxnl-tag-control';
+      const tagLabel = document.createElement('span');
+      tagLabel.className = 'sxxnl-tag-control-label';
+      tagLabel.textContent = '🏷️ TAG';
+      const tagChevron = document.createElement('span');
+      tagChevron.className = 'sxxnl-tag-control-chevron';
+      tagChevron.textContent = '▾';
+      tagSelect.setAttribute('aria-label', 'Thêm hoặc gỡ tag của truyện');
+      tagControl.append(tagLabel, tagSelect, tagChevron);
+      actions.appendChild(tagControl);
       const headerLeft = document.createElement('div');
       headerLeft.className = 'sxxnl-don-header-left';
-      headerLeft.append(cb, title);
+      headerLeft.append(cbShell, title);
       const headerRight = document.createElement('div');
       headerRight.className = 'sxxnl-don-header-right';
-      headerRight.append(meta, badges, dateSpan, actions);
+      headerRight.append(meta, badges, dateSpan);
       header.append(headerLeft, headerRight);
-      item.appendChild(header);
+      item.append(header, actions);
       item.appendChild(body);
       listWrap.appendChild(item);
     });
