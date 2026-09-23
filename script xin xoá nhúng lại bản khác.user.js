@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.6.5
-// @history      Sửa lại các nút bấm để hiển thị, không bị CSS chặn nữa
+// @version      1.6.6
+// @history      Sửa lỗi hiển thị trên wiki
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -35,7 +35,6 @@ const isWiki =
       .map(el => '@' + el.getAttribute('data-id'))
       .join(' ');
   }
-  // Mục lục wiki cần sign từ trang truyện hiện tại.
   const countEnabled = () => GM_getValue('sxxnl_auto_count', true) !== false;
   function indexBootstrap() {
     const html = document.documentElement.outerHTML;
@@ -443,7 +442,6 @@ function validateDateField(val) {
     .sxxnl-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.45); }
     .sxxnl-submit:active { transform: translateY(0); }
     .sxxnl-error-msg { font-size: 12.5px; color: #e53935; margin-top: 4px; font-weight: 500; }
-    /* Tab 2 */
     .sxxnl-toolbar {
       display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
       margin-bottom: 8px; padding: 4px 0;
@@ -468,7 +466,6 @@ function validateDateField(val) {
       margin: 0; color: #475569; font-size: 11px; font-weight: 600;
       white-space: nowrap; cursor: pointer;
     }
-    /* WikiCV/Materialize ẩn checkbox gốc; hiển thị checkbox native trong panel. */
     #sxxnl-panel input[type="checkbox"].sxxnl-checkbox {
       display: inline-block !important; position: static !important;
       visibility: visible !important; opacity: 1 !important;
@@ -594,11 +591,9 @@ function validateDateField(val) {
     .sxxnl-don-body.open { display: block; }
     .sxxnl-don-body a { color: #2563eb; text-decoration: none; }
     .sxxnl-don-body a:hover { text-decoration: underline; }
-    /* Scrollbar styling */
     .sxxnl-tab-content::-webkit-scrollbar { width: 5px; }
     .sxxnl-tab-content::-webkit-scrollbar-track { background: transparent; }
     .sxxnl-tab-content::-webkit-scrollbar-thumb { background: #ddd; border-radius: 99px; }
-    /* Muc selector step */
     .sxxnl-step-muc { padding: 6px 0 0; }
     .sxxnl-step-title {
       font-size: 11.5px; font-weight: 700; color: #2563eb; text-transform: uppercase;
@@ -664,6 +659,7 @@ function validateDateField(val) {
       box-shadow: 0 12px 48px rgba(0,0,0,0.18);
       font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
     }
+    #sxxnl-edit-modal > .sxxnl-edit-box { box-sizing: border-box; width: min(400px, calc(100vw - 20px)); }
     .sxxnl-edit-box h3 { font-size: 14px; font-weight: 700; margin: 0 0 10px; color: #2563eb; }
     .sxxnl-edit-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
     .sxxnl-edit-header-row h3 { margin: 0; }
@@ -680,6 +676,15 @@ function validateDateField(val) {
       width: 100%; box-sizing: border-box; padding: 7px 10px;
       border: 1.5px solid #e0e0e0; border-radius: 9px; font-size: 13px;
       font-family: inherit; resize: none; height: 36px;
+    }
+    #sxxnl-edit-modal #sxxnl-edit-fields,
+    #sxxnl-edit-modal #sxxnl-edit-fields .sxxnl-edit-row {
+      display: block; width: 100%; min-width: 0; box-sizing: border-box;
+    }
+    #sxxnl-edit-modal #sxxnl-edit-fields textarea {
+      display: block !important; width: 100% !important;
+      min-width: 0 !important; max-width: 100% !important;
+      box-sizing: border-box !important; float: none !important;
     }
     .sxxnl-edit-row textarea:focus { outline: none; border-color: #2563eb; }
     .sxxnl-edit-btns { display: flex; gap: 8px; margin-top: 12px; }
