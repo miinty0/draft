@@ -1,17 +1,20 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.4
-// @history      Cho phép hiển thị trên domain mới
+// @version      1.6
+// @history      Tự điền tổng số chương, mở rộng tag lên tối đa 10 tag, cho phép user custom tag
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
-// @include      /^https:\/\/[^/]*wiki[^/]*\/user\/[^\/]+$/
+// @include      /^https:\/\/[^/]*wiki[^/]*\/user\/[^\/]/
 // @include      /^https:\/\/[^/]*wiki[^/]*\/truyen\/[^\/]+$/
+// @include      /^https:\/\/[^/]*wiki[^/]*\/nhung-file
+// @include      /^https:\/\/[^/]*wiki[^/]*\/nhung-link
 // @match        https://forum.dichtienghoa.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_setClipboard
 // @connect      catbox.moe
 // ==/UserScript==
 (function () {
@@ -31,6 +34,113 @@ const isWiki =
     autoFill.managers = [...document.querySelectorAll('.book-manager')]
       .map(el => '@' + el.getAttribute('data-id'))
       .join(' ');
+  }
+  // Mục lục wiki cần sign từ trang truyện hiện tại.
+  const countEnabled = () => GM_getValue('sxxnl_auto_count', true) !== false;
+  function indexBootstrap() {
+    const html = document.documentElement.outerHTML;
+    const bookId = html.match(/\bvar\s+bookId\s*=\s*["']([^"']+)["']/)?.[1]
+      || document.querySelector('[data-action="bookList"][data-id]')?.getAttribute('data-id');
+    const signKey = html.match(/\bvar\s+signKey\s*=\s*["']([^"']+)["']/)?.[1];
+    const body = html.match(/function\s+fuzzySign\s*\([^)]*\)\s*\{([\s\S]*?)\}/)?.[1] || '';
+    const equal = body.match(/substring\(\s*(\d+)\s*\)\s*\+\s*\w+\.substring\(\s*0\s*,\s*(\d+)\s*\)/);
+    const offset = equal && equal[1] === equal[2] ? Number(equal[1]) : Number(body.match(/substring\(\s*(\d+)\s*\)/)?.[1]);
+    if (!bookId || !signKey || !Number.isFinite(offset)) throw new Error('Không lấy được sign của /book/index');
+    return { bookId, signKey, offset };
+  }
+  function wikiChapterLinks(root) {
+    let links = [...root.querySelectorAll('.chapter-name a[href], a.chapter-name[href]')];
+    if (!links.length) links = [...root.querySelectorAll('a[href*="/chuong-"]')];
+    return new Set(links.map(a => a.getAttribute('href'))
+      .filter(h => h && h !== '#!' && h !== 'None' && !/^javascript:/i.test(h)));
+  }
+  function lastWikiIndexPage() {
+    const pages = [...document.querySelectorAll('.volume-list .pagination a[data-action="loadBookIndex"][data-start][data-size]')]
+      .map(a => ({ start: Number(a.getAttribute('data-start')), size: Number(a.getAttribute('data-size')) }))
+      .filter(p => Number.isSafeInteger(p.start) && p.start >= 0 && Number.isSafeInteger(p.size)
+        && p.size > 0 && p.size <= 501 && p.start % p.size === 0);
+    return pages.reduce((last, page) => page.start > last.start ? page : last, { start: 0, size: 501 });
+  }
+  function wikiIndexReady() {
+    const roots = [...document.querySelectorAll('.volume-list')];
+    const chapters = roots.reduce((largest, root) => Math.max(largest, wikiChapterLinks(root).size), 0);
+    if (!chapters) return false;
+    const hasPagination = !!document.querySelector('.volume-list .pagination a[data-action="loadBookIndex"][data-start][data-size]');
+    return chapters < 501 || hasPagination;
+  }
+  function waitForWikiIndex(minMs = 5000, maxMs = 10000) {
+    return new Promise(resolve => {
+      const started = Date.now();
+      let finished = false, queued = null;
+      const observer = new MutationObserver(() => {
+        if (queued === null) queued = setTimeout(() => { queued = null; check(); }, 100);
+      });
+      let minTimer, maxTimer;
+      function finish() {
+        if (finished) return;
+        finished = true;
+        observer.disconnect();
+        clearTimeout(minTimer); clearTimeout(maxTimer); clearTimeout(queued);
+        resolve();
+      }
+      function check() {
+        if (Date.now() - started >= minMs && wikiIndexReady()) finish();
+      }
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      minTimer = setTimeout(check, minMs);
+      maxTimer = setTimeout(finish, maxMs);
+    });
+  }
+  async function countWikiChapters() {
+    await waitForWikiIndex();
+    if (!countEnabled()) return null;
+    const visible = [...document.querySelectorAll('.volume-list')]
+      .reduce((largest, root) => Math.max(largest, wikiChapterLinks(root).size), 0);
+    if (!visible) return null;
+    const { start, size } = lastWikiIndexPage();
+    const hasPagination = !!document.querySelector('.volume-list .pagination a[data-action="loadBookIndex"][data-start][data-size]');
+    if (start === 0 && visible === size && !hasPagination) return null;
+    if (start === 0) {
+      if (visible <= size) return visible;
+    }
+    const { bookId, signKey, offset } = indexBootstrap();
+    const input = `${signKey}${start}${size}`;
+    const rotated = input.substring(offset) + input.substring(0, offset);
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rotated));
+    const sign = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+    const url = new URL('/book/index', location.origin);
+    Object.entries({ bookId, start, size, signKey, sign }).forEach(([k,v]) => url.searchParams.set(k, String(v)));
+    const response = await fetch(url.href, { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) throw new Error(`/book/index HTTP ${response.status}`);
+    const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const lastPageCount = wikiChapterLinks(doc).size;
+    if (!lastPageCount || lastPageCount > size) throw new Error('/book/index trang cuối trả mục lục rỗng hoặc không hợp lệ');
+    return start + lastPageCount;
+  }
+  function formatCurrentVersion(count, latest) {
+    const title = (latest || '').trim();
+    const prefix = /^(?:chương|đệ)\s*(\d+)(?!\d)|^(\d+)(?!\d)/i.exec(title);
+    const sameNumber = prefix && Number(prefix[1] || prefix[2]) === count;
+    return `${count} chương${title && !sameNumber ? ` (${title})` : ''}`;
+  }
+  let chapterCountPromise = null;
+  let countGeneration = 0;
+  function fillCurrentVersion(container) {
+    if (!isWiki || !countEnabled()) return;
+    const field = container.querySelector('[data-field-name="currentVersion"]');
+    if (!field) return;
+    const original = field.value;
+    if (!chapterCountPromise) chapterCountPromise = countWikiChapters().catch(e => {
+      console.warn('[sxxnl] Không đếm được chương, giữ Mới nhất:', e);
+      return null;
+    });
+    const generation = ++countGeneration;
+    chapterCountPromise.then(count => {
+      if (count && generation === countGeneration && field.isConnected && field.value === original) {
+        field.value = formatCurrentVersion(count, autoFill.latestChapter);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
   }
   //  GM STORAGE
   function getsxxnl() {
@@ -67,6 +177,44 @@ const isWiki =
       req.onerror = () => {};
     } catch (e) { /* ignore */ }
   })();
+  const DEFAULT_TAGS = [
+    { id: 'wait', name: 'wait', color: '#dc2626' },
+    { id: 'link', name: 'link', color: '#ca8a04' },
+    { id: 'post', name: 'post', color: '#16a34a' },
+  ];
+  function getTags() {
+    const raw = GM_getValue('sxxnl_tags', null);
+    try {
+      const tags = raw ? JSON.parse(raw) : DEFAULT_TAGS;
+      if (!Array.isArray(tags)) return DEFAULT_TAGS;
+      const ids = new Set();
+      const valid = tags.filter(t => t && typeof t.id === 'string' && !ids.has(t.id) && ids.add(t.id))
+        .map(t => ({ id:t.id, name:String(t.name || t.id).slice(0,32), color:/^#[0-9a-f]{6}$/i.test(t.color) ? t.color : '#2563eb' }));
+      return DEFAULT_TAGS.every(t => valid.some(v => v.id === t.id)) && valid.length <= 10 ? valid : DEFAULT_TAGS;
+    } catch { return DEFAULT_TAGS; }
+  }
+  function tagsOf(d) {
+    return [...new Set(Array.isArray(d.tags) ? d.tags : [d.status || 'wait'])].filter(id => getTags().some(t => t.id === id)).slice(0,5);
+  }
+  function changeTags(ids, tagId, action) {
+    const list = getsxxnl();
+    let limited = 0, changed = 0, alreadyHad = 0;
+    list.forEach(d => {
+      if (!ids.has(d.id)) return;
+      const tags = tagsOf(d);
+      if (action === 'add' && tags.includes(tagId)) { alreadyHad++; return; }
+      const next = action === 'remove' ? tags.filter(t => t !== tagId) : [...new Set([...tags, tagId])];
+      if (next.length > 5) { limited++; return; }
+      if (next.length === tags.length) return;
+      d.tags = next;
+      d.status = next[0] || 'wait'; 
+      changed++;
+    });
+    if (changed) savesxxnl(list);
+    if (limited) showNotification(`${limited} đơn đã đủ 5 tag`);
+    if (changed) renderTab2();
+    return { changed, limited, alreadyHad };
+  }
   // HELPERS
   function removeAccents(str) {
     return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -169,7 +317,8 @@ function validateDateField(val) {
       display: flex; align-items: center; gap: 10px; flex-shrink: 0;
     }
     .sxxnl-header-title {
-      flex: 1; font-weight: 700; font-size: 14px;
+      flex: 1; min-width: 0; font-weight: 700; font-size: 14px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .sxxnl-header-btn {
       background: rgba(255,255,255,0.18); border: none; color: #fff; cursor: pointer;
@@ -177,6 +326,27 @@ function validateDateField(val) {
       transition: background 0.15s; font-weight: 600;
     }
     .sxxnl-header-btn:hover { background: rgba(255,255,255,0.32); }
+    #sxxnl-count-btn {
+      flex: 0 0 30px; width: 30px; height: 30px; padding: 5px;
+      display: inline-flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    #sxxnl-count-btn svg { width: 19px; height: 19px; }
+    #sxxnl-count-btn::after {
+      content: ''; position: absolute; right: 2px; bottom: 2px;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #cbd5e1; border: 1px solid #fff;
+    }
+    #sxxnl-count-btn.enabled::after { background: #4ade80; }
+    #sxxnl-count-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    #sxxnl-count-tip {
+      position: fixed; z-index: 99999999; width: 292px; max-width: calc(100vw - 20px);
+      box-sizing: border-box; padding: 10px 12px; border-radius: 10px;
+      background: #172554; color: #fff; box-shadow: 0 8px 28px rgba(0,0,0,.25);
+      font: 12px/1.55 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
+      white-space: pre-line; pointer-events: none;
+    }
+    #sxxnl-count-tip[hidden] { display: none !important; }
     .sxxnl-tabs {
       display: flex; flex-shrink: 0;
       background: #fff;
@@ -269,6 +439,22 @@ function validateDateField(val) {
       display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
       margin-bottom: 8px; padding: 4px 0;
     }
+    .sxxnl-filter-row {
+      display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,.76fr);
+      gap: 6px; margin-bottom: 7px;
+    }
+    .sxxnl-filter-row label { min-width: 0; font-size: 11px; color: #475569; font-weight: 600; }
+    .sxxnl-filter-row .sxxnl-select {
+      display: block !important; width: 100%; min-width: 0; box-sizing: border-box;
+      margin-top: 3px; padding: 6px 4px; font-size: 11px;
+    }
+    .sxxnl-actions {
+      flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+      width: 100%; box-sizing: border-box;
+    }
+    .sxxnl-actions > * { flex: 0 0 auto; }
+    .sxxnl-actions .sxxnl-toolbar-btn { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
+    .sxxnl-actions .sxxnl-select { width: 104px; min-width: 0; padding: 6px 4px; font-size: 11px; }
     .sxxnl-toolbar-btn {
       padding: 7px 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
       background: #fff; cursor: pointer; font-size: 12.5px; color: #444;
@@ -323,7 +509,11 @@ function validateDateField(val) {
     }
     .sxxnl-badge.wait   { background: #fff1f2; color: #dc2626; border: 1px solid #fca5a5; }
     .sxxnl-badge.link { background: #fefce8; color: #ca8a04; border: 1px solid #fde047; }
-    .sxxnl-badge.post   { background: #f0faf0; color: #16a34a; border: 1px solid #86efac; }
+    .sxxnl-badges { display:flex;flex-wrap:wrap;gap:3px;justify-content:center; }
+    .sxxnl-card-tag-select { max-width:120px;padding:3px;font-size:11px; }
+    .sxxnl-tag-manager-row { display:flex;align-items:center;gap:6px;margin:7px 0; }
+    .sxxnl-tag-manager-row input[type=text] { min-width:0;flex:1;padding:6px; }
+    .sxxnl-tag-manager-row input[type=color] { width:35px;height:30px;padding:1px; }
     .sxxnl-don-body {
       display: none; padding: 10px; border-top: 1px solid #f0f0f0;
       font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.75;
@@ -555,6 +745,7 @@ function validateDateField(val) {
   panel.innerHTML = `
     <div class="sxxnl-header">
       <span class="sxxnl-header-title">Script xin xoá nhúng lại bản khác</span>
+      <button class="sxxnl-header-btn" id="sxxnl-count-btn" type="button" aria-label="Tùy chọn tự đếm chương" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6C9.5 4.4 6.5 4.1 3 5v14c3.5-.9 6.5-.6 9 1 2.5-1.6 5.5-1.9 9-1V5c-3.5-.9-6.5-.6-9 1Z"/><path d="M12 6v14"/></svg></button>
       <button class="sxxnl-header-btn" id="sxxnl-info-btn" title="Thông tin các mục">ℹ</button>
       <button class="sxxnl-header-btn" id="sxxnl-close-btn">×</button>
     </div>
@@ -571,6 +762,50 @@ function validateDateField(val) {
   editModal.id = 'sxxnl-edit-modal';
   editModal.innerHTML = `<div class="sxxnl-edit-box"></div>`;
   document.body.appendChild(editModal);
+  const countBtn = panel.querySelector('#sxxnl-count-btn');
+  const countTip = document.createElement('div');
+  countTip.id = 'sxxnl-count-tip';
+  countTip.setAttribute('role', 'tooltip');
+  countTip.hidden = true;
+  document.body.appendChild(countTip);
+  countBtn.setAttribute('aria-describedby', countTip.id);
+  function positionCountTip() {
+    if (countTip.hidden) return;
+    const rect = countBtn.getBoundingClientRect();
+    const left = Math.max(10, Math.min(rect.right - countTip.offsetWidth, window.innerWidth - countTip.offsetWidth - 10));
+    const below = rect.bottom + 8;
+    const top = below + countTip.offsetHeight <= window.innerHeight - 10
+      ? below : Math.max(10, rect.top - countTip.offsetHeight - 8);
+    countTip.style.left = left + 'px';
+    countTip.style.top = top + 'px';
+  }
+  function syncCountBtn() {
+    const enabled = countEnabled();
+    countBtn.classList.toggle('enabled', enabled);
+    countBtn.setAttribute('aria-pressed', String(enabled));
+    countBtn.setAttribute('aria-label', `Tự đếm chương: ${enabled ? 'bật' : 'tắt'}. Bấm để đổi`);
+    countTip.textContent = [
+      `TỰ ĐẾM CHƯƠNG: ${enabled ? 'BẬT' : 'TẮT'}`,
+      'Tự điền tổng chương, nếu chương cuối do tác giả đánh số sai thì sẽ điền theo kiểu:',
+      '[Tổng chương (tên chương cuối)]',
+      'Bấm biểu tượng để bật/tắt, lần truy cập sau sẽ ghi nhớ lựa chọn được lưu.'
+    ].join('\n\r');
+    positionCountTip();
+  }
+  syncCountBtn();
+  countBtn.addEventListener('mouseenter', () => { countTip.hidden = false; positionCountTip(); });
+  countBtn.addEventListener('mouseleave', () => { countTip.hidden = true; });
+  countBtn.addEventListener('focus', () => { countTip.hidden = false; positionCountTip(); });
+  countBtn.addEventListener('blur', () => { countTip.hidden = true; });
+  countBtn.addEventListener('click', () => {
+    GM_setValue('sxxnl_auto_count', !countEnabled());
+    countGeneration++;
+    syncCountBtn();
+    if (countEnabled()) {
+      const current = document.querySelector('#sxxnl-content-1 [data-field-name="currentVersion"]');
+      if (current && current.value === autoFill.latestChapter) fillCurrentVersion(current.closest('#sxxnl-content-1'));
+    }
+  });
   let editingDonId = null;
   editModal.addEventListener('click', (e) => {
     if (e.target === editModal) { editModal.classList.remove('open'); editingDonId = null; }
@@ -722,11 +957,9 @@ function validateDateField(val) {
         tabBar.appendChild(btn);
       });
       editBox.appendChild(tabBar);
-      // Fields for current form type
       const fieldsWrap = document.createElement('div');
       fieldsWrap.id = 'sxxnl-edit-fields';
       const f = don.fields || {};
-      // Which fields to show per form type
       const FORM_FIELDS = {
         '1601': ['storyUrl','banNhungTrung','muc','currentVersion','giaiThich','linkBanNhung','choTaiRaw'],
         '1602': ['storyUrl','banNhungTrung','managers','muc','currentVersion','soRawNum','soRawChapName','giaiThich','linkBanNhung','choTaiRaw'],
@@ -1009,7 +1242,7 @@ function validateDateField(val) {
     return wrap;
   }
   function makeGiaiThich(bindPaste) {
-    const ta = makeTextarea(1, 'Giải trình khác. Hỗ trợ paste ảnh lưu trong clipboard (Ctrl+V)');
+    const ta = makeTextarea(1, 'Giải trình khác (Ctrl+V để chèn ảnh)');
     ta.dataset.fieldName = 'giaiThich';
     if (bindPaste) bindPasteImage(ta);
     return makeField('Giải thích thêm:', ta);
@@ -1067,7 +1300,7 @@ function validateDateField(val) {
       addField('Quản lý truyện:', 'managers', af.managers);
       addField('Xin xóa theo mục:', 'muc', selectedMuc ? selectedMuc : '');
       addField('Bản nhúng đang có:', 'currentVersion', af.latestChapter);
-      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để chuẩn bị nhúng lại:'));
+      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
       addField('Chỗ tải raw:', 'choTaiRaw');
@@ -1099,7 +1332,7 @@ function validateDateField(val) {
       rowChuongGoc.append(taChuongGocNum, spanChuong);
       wrapChuongGoc.appendChild(rowChuongGoc);
       container.appendChild(wrapChuongGoc);
-      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để chuẩn bị nhúng lại:'));
+      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
       addField('Chỗ tải raw:', 'choTaiRaw');
@@ -1144,7 +1377,7 @@ function validateDateField(val) {
       addField('Bản nhúng trùng:', 'banNhungTrung');
       addField('Xin xóa theo mục:', 'muc', selectedMuc ? selectedMuc : '');
       addField('Bản nhúng đang có:', 'currentVersion', af.latestChapter);
-      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để chuẩn bị nhúng lại:'));
+      container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
       addField('Chỗ tải raw:', 'choTaiRaw');
@@ -1158,6 +1391,7 @@ function validateDateField(val) {
     submitBtn.textContent = 'Submit';
     submitBtn.addEventListener('click', () => submitForm(container, subTabId));
     container.appendChild(submitBtn);
+    fillCurrentVersion(container);
     return container;
   }
   async function submitForm(container, subTabId) {
@@ -1231,6 +1465,7 @@ function validateDateField(val) {
       storyUrl: fields['storyUrl'] || '',
       createdAt: Date.now(),
       status: 'wait',
+      tags: ['wait'],
       fields
     };
     const list = getsxxnl();
@@ -1268,6 +1503,7 @@ function validateDateField(val) {
     '1604': 'Xin xóa truyện mà chủ hiện tại đang bị khóa Nhúng theo mục o. Mình cam kết sẽ nhúng lại trong vòng 7 ngày.',
   };
   let tab2Filter = 'all';
+  let tab2TagFilter = 'all';
   let tab2Sort = 'oldest';
   let tab2Search = '';
   let selectedIds = new Set();
@@ -1297,7 +1533,7 @@ function validateDateField(val) {
     if (f.soChuongGoc)    lines.push(`-Số chương của truyện gốc: ${f.soChuongGoc} chương`);
     if (f.soRawNum) {
       const chapName = f.soRawChapName ? ` (${f.soRawChapName})` : '';
-      lines.push(`-Số raw mà mình đang có để chuẩn bị nhúng lại: ${f.soRawNum} chương${chapName}`);
+      lines.push(`-Số raw mà mình đang có để nhúng lại: ${f.soRawNum} chương${chapName}`);
     }
     if (f.giaiThich)      lines.push(`-Giải thích thêm: ${f.giaiThich}`);
     if (f.linkBanNhung)   lines.push(`-Link bản nhúng lại: ${f.linkBanNhung}`);
@@ -1317,7 +1553,7 @@ function validateDateField(val) {
     if (f.soChuongGoc)    lines.push(`-Số chương của truyện gốc: ${f.soChuongGoc} chương`);
     if (f.soRawNum) {
       const chapName = f.soRawChapName ? ` (${f.soRawChapName})` : '';
-      lines.push(`-Số raw mà mình đang có để chuẩn bị nhúng lại: ${f.soRawNum} chương${chapName}`);
+      lines.push(`-Số raw mà mình đang có để nhúng lại: ${f.soRawNum} chương${chapName}`);
     }
     if (f.giaiThich)      lines.push(`-Giải thích thêm: ${f.giaiThich}`);
     if (f.linkBanNhung)   lines.push(`-Link bản nhúng lại: ${f.linkBanNhung}`);
@@ -1337,7 +1573,15 @@ function validateDateField(val) {
     content2.innerHTML = '';
     // Toolbar
     const toolbar = document.createElement('div');
-    toolbar.className = 'sxxnl-toolbar';
+    toolbar.className = 'sxxnl-toolbar sxxnl-actions';
+    const filterRow = document.createElement('div');
+    filterRow.className = 'sxxnl-filter-row';
+    const addFilter = (name, select) => {
+      const label = document.createElement('label');
+      label.textContent = name;
+      label.appendChild(select);
+      filterRow.appendChild(label);
+    };
     const cbAll = document.createElement('input');
     cbAll.type = 'checkbox';
     cbAll.title = 'Chọn tất cả';
@@ -1345,7 +1589,6 @@ function validateDateField(val) {
     // Filter dropdown
     const filterSel = document.createElement('select');
     filterSel.className = 'sxxnl-select';
-    filterSel.style.cssText = 'display:inline-block!important;visibility:visible!important;opacity:1!important;max-width:140px;';
     FILTER_OPTIONS.forEach(opt => {
       const o = document.createElement('option');
       o.value = opt.value; o.textContent = opt.label;
@@ -1353,11 +1596,18 @@ function validateDateField(val) {
       filterSel.appendChild(o);
     });
     filterSel.addEventListener('change', () => { tab2Filter = filterSel.value; selectedIds.clear(); renderTab2(); });
-    toolbar.appendChild(filterSel);
+    addFilter('Loại đơn', filterSel);
+    const tagFilter = document.createElement('select');
+    tagFilter.className = 'sxxnl-select';
+    const allTags = document.createElement('option'); allTags.value = 'all'; allTags.textContent = 'Tất cả tag'; tagFilter.appendChild(allTags);
+    getTags().forEach(t => { const o = document.createElement('option'); o.value=t.id; o.textContent=t.name; tagFilter.appendChild(o); });
+    tagFilter.value = tab2TagFilter;
+    tagFilter.title = 'Lọc tag cùng với bộ lọc loại đơn (AND)';
+    tagFilter.addEventListener('change', () => { tab2TagFilter=tagFilter.value; selectedIds.clear(); renderTab2(); });
+    addFilter('🏷 Lọc tag', tagFilter);
     // Sort dropdown
     const sortSel = document.createElement('select');
     sortSel.className = 'sxxnl-select';
-    sortSel.style.cssText = 'display:inline-block!important;visibility:visible!important;opacity:1!important;max-width:130px;';
     [['newest','Mới nhất'],['oldest','Cũ nhất']].forEach(([v,l]) => {
       const o = document.createElement('option');
       o.value = v; o.textContent = l;
@@ -1365,39 +1615,51 @@ function validateDateField(val) {
       sortSel.appendChild(o);
     });
     sortSel.addEventListener('change', () => { tab2Sort = sortSel.value; renderTab2(); });
-    toolbar.appendChild(sortSel);
+    addFilter('Sắp xếp', sortSel);
     const btnCopy = document.createElement('button');
     btnCopy.className = 'sxxnl-toolbar-btn';
-    btnCopy.textContent = '📋 Sao chép';
+    btnCopy.textContent = '📋 Copy';
+    btnCopy.title = 'Sao chép các đơn đã chọn';
     btnCopy.addEventListener('click', async () => {
       const visible = getVisibleDons();
       const selected = visible.filter(d => selectedIds.has(d.id));
       if (!selected.length) { showNotification('Chưa chọn đơn nào!'); return; }
       const text = buildCopyText(selected, tab2Filter);
-      navigator.clipboard.writeText(text).then(() => showNotification('✓ Đã sao chép!'));
+      try {
+        if (typeof GM_setClipboard === 'function') GM_setClipboard(text, 'text');
+        else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else throw new Error('Clipboard API không khả dụng');
+        showNotification('✓ Đã sao chép!');
+      } catch (e) { console.error('[sxxnl] Sao chép thất bại:', e); showNotification('❌ Không sao chép được: ' + e.message); }
     });
     toolbar.appendChild(btnCopy);
-    const btnDone = document.createElement('button');
-    btnDone.className = 'sxxnl-toolbar-btn';
-    btnDone.textContent = '➡️ Đánh dấu tiếp';
-    btnDone.title = 'Tăng trạng thái của đơn đã chọn lên 1 bậc (wait→link→post)';
-    btnDone.addEventListener('click', async () => {
-      if (!selectedIds.size) return;
-      const STATUS_ORDER = ['wait','link','post'];
-      const list = (getsxxnl()).map(d => {
-        if (!selectedIds.has(d.id)) return d;
-        const cur = STATUS_ORDER.includes(d.status) ? d.status : 'wait';
-        const nextIdx = Math.min(STATUS_ORDER.indexOf(cur) + 1, STATUS_ORDER.length - 1);
-        return { ...d, status: STATUS_ORDER[nextIdx] };
-      });
-      savesxxnl(list);
-      selectedIds.clear();
-      renderTab2();
+    const batchTag = document.createElement('select');
+    batchTag.className = 'sxxnl-select';
+    const prompt = document.createElement('option'); prompt.value=''; prompt.textContent='Chọn tag…'; batchTag.appendChild(prompt);
+    batchTag.title = 'Tag để gắn hàng loạt cho các đơn đang chọn';
+    getTags().forEach(t => { const o=document.createElement('option'); o.value=t.id; o.textContent=t.name; batchTag.appendChild(o); });
+    toolbar.appendChild(batchTag);
+    const batchAddBtn = document.createElement('button');
+    batchAddBtn.className = 'sxxnl-toolbar-btn';
+    batchAddBtn.textContent = '➕ Gắn tag';
+    batchAddBtn.title = 'Gắn tag đã chọn cho mọi đơn đang được đánh dấu trong danh sách hiển thị';
+    batchAddBtn.addEventListener('click', () => {
+      if (!batchTag.value) { showNotification('Hãy chọn một tag để thêm.'); return; }
+      const visibleSelected = new Set(getVisibleDons().filter(d => selectedIds.has(d.id)).map(d => d.id));
+      if (!visibleSelected.size) { showNotification('Chưa chọn đơn nào trong danh sách đang hiển thị!'); return; }
+      const tagName = getTags().find(t => t.id === batchTag.value)?.name || batchTag.value;
+      const { changed, limited, alreadyHad } = changeTags(visibleSelected, batchTag.value, 'add');
+      showNotification(`✓ Gắn tag ${tagName}: ${changed}/${visibleSelected.size} đơn${alreadyHad ? `; ${alreadyHad} đã có tag` : ''}${limited ? `; ${limited} đã đủ 5 tag` : ''}`);
     });
-    toolbar.appendChild(btnDone);
+    toolbar.appendChild(batchAddBtn);
+    const manageBtn = document.createElement('button');
+    manageBtn.className='sxxnl-toolbar-btn'; manageBtn.textContent='⚙️ Tag';
+    manageBtn.title = 'Quản lý tên và màu tag';
+    manageBtn.addEventListener('click', openTagManager); toolbar.appendChild(manageBtn);
     const btnDel = document.createElement('button');
     btnDel.className = 'sxxnl-toolbar-btn';
-    btnDel.textContent = '🗑 Xoá đơn';
+    btnDel.textContent = '🗑 Xoá';
+    btnDel.title = 'Xoá các đơn đã chọn';
     btnDel.addEventListener('click', async () => {
       if (!selectedIds.size) return;
       if (!confirm(`Xoá ${selectedIds.size} đơn đã chọn?`)) return;
@@ -1407,8 +1669,7 @@ function validateDateField(val) {
       renderTab2();
     });
     toolbar.appendChild(btnDel);
-    content2.appendChild(toolbar);
-    // Row 2: search + count
+    content2.append(filterRow, toolbar);
     const toolbar2 = document.createElement('div');
     toolbar2.className = 'sxxnl-toolbar';
     const searchInput = document.createElement('input');
@@ -1472,12 +1733,16 @@ function validateDateField(val) {
       const dateSpan = document.createElement('span');
       dateSpan.className = 'sxxnl-don-meta';
       dateSpan.textContent = formatDate(don.createdAt);
-      const badge = document.createElement('span');
-      const STATUS_ORDER = ['wait','link','post'];
-      const STATUS_LABELS = { wait: 'wait', link: 'link', post: 'post' };
-      const curStatus = STATUS_ORDER.includes(don.status) ? don.status : 'wait';
-      badge.className = 'sxxnl-badge ' + curStatus;
-      badge.textContent = STATUS_LABELS[curStatus];
+      const badges = document.createElement('div');
+      badges.className = 'sxxnl-badges';
+      tagsOf(don).forEach(id => {
+        const tag = getTags().find(t => t.id === id);
+        if (!tag) return;
+        const badge = document.createElement('span');
+        badge.className = 'sxxnl-badge'; badge.textContent = tag.name;
+        badge.style.cssText = `color:${tag.color};border:1px solid ${tag.color};background:${tag.color}18;`;
+        badges.appendChild(badge);
+      });
       header.addEventListener('click', (e) => {
         if (e.target === cb || e.target === title || title.contains(e.target)) return;
         cb.checked = !cb.checked;
@@ -1494,44 +1759,27 @@ function validateDateField(val) {
       btnEdit.title = 'Sửa đơn';
       btnEdit.addEventListener('click', (e) => { e.stopPropagation(); openEditModal(don); });
       actions.appendChild(btnEdit);
-      const nextIdx = Math.min(STATUS_ORDER.indexOf(curStatus) + 1, STATUS_ORDER.length - 1);
-      const nextStatus = STATUS_ORDER[nextIdx];
-      const btnNext = document.createElement('button');
-      btnNext.className = 'sxxnl-don-action-btn';
-      btnNext.textContent = '➡️';
-      btnNext.title = curStatus === 'post' ? 'Đã ở trạng thái cuối' : `Đánh dấu: ${nextStatus}`;
-      btnNext.disabled = curStatus === 'post';
-      btnNext.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (curStatus === 'post') return;
-        const list = (getsxxnl()).map(d => d.id === don.id ? { ...d, status: nextStatus } : d);
-        savesxxnl(list);
-        showNotification(`➡️ ${nextStatus}`);
-        renderTab2();
+      const tagSelect = document.createElement('select');
+      tagSelect.className = 'sxxnl-select sxxnl-card-tag-select';
+      const selectPrompt = document.createElement('option'); selectPrompt.value=''; selectPrompt.textContent='Chọn tag…'; tagSelect.appendChild(selectPrompt);
+      getTags().forEach(t => {
+        const option = document.createElement('option'); option.value=t.id;
+        option.textContent = `${tagsOf(don).includes(t.id) ? '✓ ' : ''}${t.name}`;
+        tagSelect.appendChild(option);
       });
-      actions.appendChild(btnNext);
-      const prevIdx = Math.max(STATUS_ORDER.indexOf(curStatus) - 1, 0);
-      const prevStatus = STATUS_ORDER[prevIdx];
-      const btnPrev = document.createElement('button');
-      btnPrev.className = 'sxxnl-don-action-btn undone';
-      btnPrev.textContent = '🔙';
-      btnPrev.title = curStatus === 'wait' ? 'Đã ở trạng thái đầu' : `Quay lại: ${prevStatus}`;
-      btnPrev.disabled = curStatus === 'wait';
-      btnPrev.addEventListener('click', async (e) => {
+      tagSelect.addEventListener('click', e => e.stopPropagation());
+      tagSelect.addEventListener('change', e => {
         e.stopPropagation();
-        if (curStatus === 'wait') return;
-        const list = (getsxxnl()).map(d => d.id === don.id ? { ...d, status: prevStatus } : d);
-        savesxxnl(list);
-        showNotification(`🔙 ${prevStatus}`);
-        renderTab2();
+        const tagId = tagSelect.value;
+        if (tagId) changeTags(new Set([don.id]), tagId, tagsOf(don).includes(tagId) ? 'remove' : 'add');
       });
-      actions.appendChild(btnPrev);
+      actions.appendChild(tagSelect);
       const headerLeft = document.createElement('div');
       headerLeft.className = 'sxxnl-don-header-left';
       headerLeft.append(cb, title);
       const headerRight = document.createElement('div');
       headerRight.className = 'sxxnl-don-header-right';
-      headerRight.append(meta, badge, dateSpan, actions);
+      headerRight.append(meta, badges, dateSpan, actions);
       header.append(headerLeft, headerRight);
       item.appendChild(header);
       item.appendChild(body);
@@ -1541,9 +1789,54 @@ function validateDateField(val) {
   }
   function getVisibleDons() {
     let list = getsxxnl();
-    list = list.filter(d => matchFilter(d, tab2Filter) && matchSearch(d, tab2Search));
+    list = list.filter(d => matchFilter(d, tab2Filter) && (tab2TagFilter === 'all' || tagsOf(d).includes(tab2TagFilter)) && matchSearch(d, tab2Search));
     list.sort((a, b) => tab2Sort === 'newest' ? b.createdAt - a.createdAt : a.createdAt - b.createdAt);
     return list;
+  }
+  function openTagManager() {
+    const overlay = document.createElement('div');
+    overlay.className = 'sxxnl-tag-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:#0006;z-index:99999999;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.className = 'sxxnl-edit-box'; box.style.cssText = 'width:360px;max-width:95vw;max-height:85vh;overflow:auto;';
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    let tags = getTags().map(t => ({ ...t }));
+    function draw() {
+      box.replaceChildren();
+      const title = document.createElement('h3'); title.textContent = `Quản lý tag (${tags.length}/10)`; box.appendChild(title);
+      tags.forEach((tag, i) => {
+        const row = document.createElement('div'); row.className='sxxnl-tag-manager-row';
+        const name = document.createElement('input'); name.type='text'; name.maxLength=32; name.value=tag.name;
+        name.addEventListener('input', () => { tag.name=name.value; });
+        const color = document.createElement('input'); color.type='color'; color.value=tag.color;
+        color.addEventListener('input', () => { tag.color=color.value; });
+        row.append(name,color);
+        if (!DEFAULT_TAGS.some(t => t.id===tag.id)) {
+          const remove = document.createElement('button'); remove.textContent='✕'; remove.title='Xóa tag khỏi tất cả đơn';
+          remove.addEventListener('click', () => { tags.splice(i,1); draw(); }); row.appendChild(remove);
+        }
+        box.appendChild(row);
+      });
+      const add = document.createElement('button'); add.className='sxxnl-toolbar-btn'; add.textContent='+ Thêm tag'; add.disabled=tags.length>=10;
+      add.addEventListener('click', () => { tags.push({ id:'tag_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),name:'Tag mới',color:'#2563eb' }); draw(); });
+      box.appendChild(add);
+      const save = document.createElement('button'); save.className='sxxnl-submit'; save.textContent='Lưu tag';
+      save.addEventListener('click', () => {
+        tags.forEach(t => t.name=t.name.trim());
+        if (tags.some(t => !t.name) || new Set(tags.map(t => t.name.toLowerCase())).size!==tags.length) {
+          showNotification('Tên tag không được rỗng hoặc trùng nhau'); return;
+        }
+        GM_setValue('sxxnl_tags', JSON.stringify(tags));
+        const valid = new Set(tags.map(t=>t.id));
+        const list = getsxxnl();
+        list.forEach(d => { if (Array.isArray(d.tags)) d.tags=d.tags.filter(id=>valid.has(id)); });
+        savesxxnl(list);
+        if (!valid.has(tab2TagFilter)) tab2TagFilter='all';
+        overlay.remove(); renderTab2(); showNotification('✓ Đã lưu tag');
+      }); box.appendChild(save);
+    }
+    draw();
   }
   // INFORMATION POPOVER
   const infoPopover = document.createElement('div');
@@ -1620,7 +1913,6 @@ function validateDateField(val) {
       return `<div>${header}<br><br>${body}</div>${divider}`;
     }).join('');
   }
-  // Mở popover thông tin, dùng lại cho nút info trong panel sửa đơn (Thông tin các đơn)
   function openDonInfoPopover(mucs, donLabel, anchorEl) {
     const sel = document.getElementById('sxxnl-info-select');
     const titleEl = document.getElementById('sxxnl-info-header-title');
