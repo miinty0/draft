@@ -24,9 +24,9 @@
 	const API_URL = 'https://dichngay.com/translate/text';
 	const CACHE_KEY = 'dn_page_translator_cache_v1';
 	const SETTINGS_KEY = 'dn_page_translator_settings_v1';
-	const MAX_CACHE_ITEMS = 5000;
-	const MAX_BATCH_ITEMS = 24;
-	const MAX_BATCH_CHARS = 1800;
+	const MAX_CACHE_ITEMS = 50000;
+	const MAX_BATCH_ITEMS = 50;
+	const MAX_BATCH_CHARS = 50000;
 	const MAX_CONCURRENT = 3;
 	const REQUEST_TIMEOUT_MS = 30000;
 	const MAX_RETRIES = 2;
