@@ -1,43 +1,103 @@
 // ==UserScript==
 // @name         Auto Expand Reviews & Posts
 // @namespace    https://github.com/miinty0/draft
-// @version      1.4
-// @description  Tự động expand hết các review trên Wiki và posts trên forum
+// @version      1.6
+// @description  Expand review/posts, hiện giờ hoạt động Wiki và mở link redirect trực tiếp ở tab mới
 // @author       Miinty
-// @include      /^https:\/\/([^.\/]+\.)*[^.\/]*wiki[^.\/]*\.[^\/]+\/review
+// @include      /^https:\/\/([^.\/]+\.)*[^.\/]*wiki[^.\/]*\.[^\/]
 // @match        https://forum.dichtienghoa.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
-    // Hàm expand cho Wiki
+
+    const activityPath = /^\/user\/[^/]+\/hoat-dong\/?$/;
+    const activityTimeSelector = '.notification-list article.notification time[data-interval]';
+    const initialTimes = new Set(document.querySelectorAll(activityTimeSelector));
+    const navigation = performance.getEntriesByType('navigation')[0];
+    const initialResponseTime = performance.timeOrigin +
+        (navigation?.responseStart || navigation?.responseEnd || performance.now());
+    const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hourCycle: 'h23'
+    });
+
+    function formatAbsoluteTime(date) {
+        const fields = Object.fromEntries(
+            dateFormatter.formatToParts(date).map(part => [part.type, part.value])
+        );
+        return `${fields.hour}:${fields.minute} ${fields.day}/${fields.month}/${fields.year}`;
+    }
+
+    function showWikiActivityTimes() {
+        if (!activityPath.test(location.pathname)) return;
+
+        document.querySelectorAll(activityTimeSelector).forEach(time => {
+            if (time.dataset.absoluteTimeShown === '1') return;
+
+            const seconds = Number(time.dataset.interval);
+            if (!Number.isFinite(seconds) || seconds < 0) return;
+
+            const referenceTime = initialTimes.has(time) ? initialResponseTime : Date.now();
+            const date = new Date(referenceTime - seconds * 1000);
+            if (Number.isNaN(date.getTime())) return;
+
+            if (time.textContent.trim()) time.title = time.textContent.trim();
+            time.removeAttribute('data-ready');
+            time.textContent = formatAbsoluteTime(date);
+            time.dateTime = date.toISOString();
+            time.dataset.absoluteTimeShown = '1';
+        });
+    }
+
+    function openDirectWikiRedirectLinks() {
+        document.querySelectorAll('a[href*="/redirect"]').forEach(link => {
+            const originalHref = link.getAttribute('href');
+            if (!originalHref) return;
+
+            let redirectUrl, destination;
+            try {
+                redirectUrl = new URL(originalHref, location.href);
+                if (redirectUrl.origin !== location.origin || redirectUrl.pathname !== '/redirect') return;
+                const target = redirectUrl.searchParams.get('u');
+                if (!target) return;
+                destination = new URL(target);
+            } catch {
+                return;
+            }
+            if (destination.protocol !== 'https:' && destination.protocol !== 'http:') return;
+
+            link.href = destination.href;
+            link.target = '_blank';
+            link.rel = [...new Set([...link.rel.split(/\s+/).filter(Boolean), 'noopener', 'noreferrer'])].join(' ');
+        });
+    }
+
     function expandWikiReviews() {
-        // Tìm tất cả nút "Xem thêm"
         const readmoreButtons = document.querySelectorAll('[data-readmore-toggle]');
         console.log(`[Wiki] Tìm thấy ${readmoreButtons.length} nút "Xem thêm"`);
         readmoreButtons.forEach(button => {
-            const targetId = button.getAttribute('data-readmore-toggle');
-            const contentBox = document.getElementById(targetId);
-            if (contentBox) {
-                // Xóa giới hạn chiều cao
-                contentBox.style.maxHeight = 'none';
-                contentBox.style.height = 'auto';
-                contentBox.setAttribute('aria-expanded', 'true');
-                // Ẩn nút "Xem thêm"
-                button.style.display = 'none';
-            }
+            const contentBox = document.getElementById(button.getAttribute('data-readmore-toggle'));
+            if (!contentBox) return;
+            contentBox.style.maxHeight = 'none';
+            contentBox.style.height = 'auto';
+            contentBox.setAttribute('aria-expanded', 'true');
+            button.style.display = 'none';
         });
     }
-    // Hàm expand cho Forum
+
     function expandForumPosts() {
         const posts = document.querySelectorAll('[component="post/content"]');
         let expandedCount = 0;
         posts.forEach(post => {
-            // Kiểm tra nếu post bị cắt (scrollHeight > offsetHeight)
             if (post.scrollHeight > post.offsetHeight) {
-                // Dùng !important để override CSS của trang (đặc biệt cho mobile mode)
                 post.style.setProperty('max-height', 'none', 'important');
                 post.style.setProperty('height', 'auto', 'important');
                 post.style.setProperty('overflow', 'visible', 'important');
@@ -46,50 +106,50 @@
         });
         console.log(`[Forum] Đã expand ${expandedCount}/${posts.length} posts`);
     }
-    // Hàm chính
-    function autoExpand() {
-        const hostname = window.location.hostname;
-        const pathname = window.location.pathname;
 
-        console.log(`[Auto Expand] Checking page: ${pathname}`);
-    if (hostname.includes('wiki')) {
-    expandWikiReviews();
-} else if (hostname === 'forum.dichtienghoa.com') {
-    expandForumPosts();
-}
+    function autoExpand() {
+        const hostname = location.hostname;
+        console.log(`[Auto Expand] Checking page: ${location.pathname}`);
+        if (hostname.includes('wiki')) {
+            openDirectWikiRedirectLinks();
+            if (activityPath.test(location.pathname)) showWikiActivityTimes();
+            else if (/^\/review(?:\/|$)/.test(location.pathname)) expandWikiReviews();
+        } else if (hostname === 'forum.dichtienghoa.com') {
+            expandForumPosts();
+        }
     }
-    // Debounce để tránh chạy quá nhiều lần
+
     let debounceTimer;
     function debouncedAutoExpand() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(autoExpand, 200);
     }
+
     autoExpand();
     setTimeout(autoExpand, 1000);
-    const observer = new MutationObserver((mutations) => {
-        const hasNewContent = mutations.some(mutation => {
-            return Array.from(mutation.addedNodes).some(node => {
-                if (node.nodeType === 1) { 
-                    return node.matches && (
-                        node.matches('[component="post/content"]') ||
-                        node.matches('[data-readmore-toggle]') ||
-                        node.querySelector('[component="post/content"]') ||
-                        node.querySelector('[data-readmore-toggle]')
-                    );
-                }
-                return false;
-            });
-        });
+
+    const observer = new MutationObserver(mutations => {
+        const hasNewContent = mutations.some(mutation =>
+            (mutation.type === 'attributes' && mutation.target.matches?.('a[href*="/redirect"]')) ||
+            Array.from(mutation.addedNodes).some(node =>
+                node.nodeType === 1 && (
+                    node.matches?.('[component="post/content"], [data-readmore-toggle], a[href*="/redirect"], ' + activityTimeSelector) ||
+                    node.querySelector?.('[component="post/content"], [data-readmore-toggle], a[href*="/redirect"], ' + activityTimeSelector)
+                )
+            )
+        );
         if (hasNewContent) {
-            console.log('[Auto Expand] Phát hiện nội dung mới, đang expand...');
+            console.log('[Auto Expand] Phát hiện nội dung mới, đang xử lý...');
             debouncedAutoExpand();
         }
     });
-    // Bắt đầu theo dõi
     observer.observe(document.body, {
         childList: true,
+        attributes: true,
+        attributeFilter: ['href'],
         subtree: true
     });
+
     let lastScrollTop = 0;
     window.addEventListener('scroll', () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -98,42 +158,38 @@
             lastScrollTop = scrollTop;
         }
     }, { passive: true });
-    // Theo dõi khi tab được focus lại (snap window, switch tab)
+
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             console.log('[Auto Expand] Tab được focus lại, đang kiểm tra...');
             setTimeout(autoExpand, 300);
         }
     });
-    // Theo dõi khi window được focus lại
     window.addEventListener('focus', () => {
         console.log('[Auto Expand] Window được focus lại, đang kiểm tra...');
         setTimeout(autoExpand, 300);
     });
-    // Theo dõi history API (khi trang chuyển URL không reload)
+
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
-    history.pushState = function() {
+    history.pushState = function () {
         originalPushState.apply(this, arguments);
         console.log('[Auto Expand] URL changed via pushState:', location.pathname);
         setTimeout(autoExpand, 500);
-        setTimeout(autoExpand, 1500); 
+        setTimeout(autoExpand, 1500);
     };
-
-    history.replaceState = function() {
+    history.replaceState = function () {
         originalReplaceState.apply(this, arguments);
         console.log('[Auto Expand] URL changed via replaceState:', location.pathname);
         setTimeout(autoExpand, 500);
         setTimeout(autoExpand, 1500);
     };
-
     window.addEventListener('popstate', () => {
         console.log('[Auto Expand] URL changed via popstate:', location.pathname);
         setTimeout(autoExpand, 500);
         setTimeout(autoExpand, 1500);
     });
 
-    // Theo dõi URL change bằng cách poll
     let lastUrl = location.href;
     setInterval(() => {
         if (location.href !== lastUrl) {
