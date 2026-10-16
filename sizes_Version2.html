@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GitHub Repo File Sizes (sortable)</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:18px}
+  input,button{padding:6px;margin:4px 6px 4px 0}
+  table{border-collapse:collapse;width:100%;margin-top:12px}
+  th,td{border:1px solid #ddd;padding:6px;font-size:13px;text-align:left}
+  th{background:#f6f8fa;cursor:pointer;user-select:none}
+  tr:nth-child(even){background:#fbfbfb}
+  .small{color:#666;font-size:12px}
+  .arrow{margin-left:6px;font-size:11px;color:#333}
+</style>
+</head>
+<body>
+  <h2>GitHub file sizes — view & sort (no CLI)</h2>
+  <div>
+    Owner: <input id="owner" value="">
+    Repo: <input id="repo" value="">
+    Ref (branch/tag/sha): <input id="ref" value="">
+    Path prefix (optional): <input id="prefix" placeholder="e.g. data/subdir/">
+    Token (optional, for private repos or higher rate-limit): <input id="token" placeholder="ghp_xxx" style="width:260px">
+    <button id="load">Load</button>
+    <span class="small">Note: size shown in MiB; API returns bytes.</span>
+  </div>
+  <div id="status" class="small"></div>
+  <div id="tablewrap"></div>
+
+<script>
+let filesGlobal = [];
+let sortCol = 'size';    // 'size' or 'path'
+let sortDesc = true;     // true = largest->smallest or Z->A for path
+
+async function loadTree(owner, repo, ref, prefix, token){
+  const hdrs = { 'Accept':'application/vnd.github.v3+json' };
+  if(token) hdrs['Authorization'] = 'token ' + token;
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`;
+  document.getElementById('status').textContent = 'Fetching tree...';
+  const resp = await fetch(url, {headers: hdrs});
+  if(!resp.ok){
+    const txt = await resp.text();
+    throw new Error(`GitHub API error: ${resp.status} ${resp.statusText}\n${txt}`);
+  }
+  const json = await resp.json();
+  if(!json.tree) throw new Error('Unexpected API response (no tree).');
+  let blobs = json.tree.filter(x => x.type === 'blob');
+  if(prefix){
+    const p = prefix.replace(/^\/+|\/+$/g,'') + '/';
+    blobs = blobs.filter(b => b.path.startsWith(p));
+  }
+  return blobs.map(b => ({path: b.path, size: b.size || 0}));
+}
+
+function renderTable(){
+  const wrap = document.getElementById('tablewrap');
+  wrap.innerHTML = '';
+  if(filesGlobal.length === 0){ wrap.textContent = 'No files found for that tree/prefix.'; return; }
+
+  // sort
+  filesGlobal.sort((a,b) => {
+    if(sortCol === 'size'){
+      return sortDesc ? b.size - a.size : a.size - b.size;
+    } else {
+      const A = a.path.toLowerCase(), B = b.path.toLowerCase();
+      if(A === B) return 0;
+      return sortDesc ? (B > A ? 1 : -1) : (A > B ? 1 : -1);
+    }
+  });
+
+  // build table
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const hrow = document.createElement('tr');
+
+  const thPath = document.createElement('th');
+  thPath.innerHTML = 'Path <span id="path-arrow" class="arrow"></span>';
+  thPath.addEventListener('click', () => toggleSort('path'));
+  hrow.appendChild(thPath);
+
+  const thSize = document.createElement('th');
+  thSize.innerHTML = 'Size (MiB) <span id="size-arrow" class="arrow"></span>';
+  thSize.addEventListener('click', () => toggleSort('size'));
+  hrow.appendChild(thSize);
+
+  const thBytes = document.createElement('th');
+  thBytes.textContent = 'Size (bytes)';
+  hrow.appendChild(thBytes);
+
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  filesGlobal.forEach(f => {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = f.path;
+    const td2 = document.createElement('td'); td2.textContent = (f.size/1024/1024).toFixed(3);
+    const td3 = document.createElement('td'); td3.textContent = f.size;
+    if(f.size/1024/1024 > 100) td2.style.color='red';
+    else if(f.size/1024/1024 > 25) td2.style.color='orange';
+    tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  // update arrows
+  document.getElementById('path-arrow').textContent = (sortCol==='path' ? (sortDesc ? '▲' : '▼') : '');
+  document.getElementById('size-arrow').textContent = (sortCol==='size' ? (sortDesc ? '▲' : '▼') : '');
+}
+
+function toggleSort(col){
+  if(sortCol === col) sortDesc = !sortDesc;
+  else { sortCol = col; sortDesc = true; }
+  renderTable();
+}
+
+document.getElementById('load').addEventListener('click', async () => {
+  const owner = document.getElementById('owner').value.trim();
+  const repo = document.getElementById('repo').value.trim();
+  const ref = document.getElementById('ref').value.trim() || 'main';
+  const prefix = document.getElementById('prefix').value.trim();
+  const token = document.getElementById('token').value.trim();
+  document.getElementById('status').textContent = '';
+  try{
+    filesGlobal = await loadTree(owner, repo, ref, prefix, token);
+    sortCol = 'size'; sortDesc = true;
+    renderTable();
+    document.getElementById('status').textContent = `Found ${filesGlobal.length} files. Click headers to sort (arrow = sort direction).`;
+  }catch(err){
+    document.getElementById('status').textContent = 'Error: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
