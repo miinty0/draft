@@ -3,7 +3,7 @@
 // @namespace    https://github.com/miinty0/draft
 // @updateURL    https://raw.githubusercontent.com/miinty0/draft/main/Cover%20Audit.user.js
 // @downloadURL  https://raw.githubusercontent.com/miinty0/draft/main/Cover%20Audit.user.js
-// @version      2.1.2
+// @version      2.1.3
 // @description  Kiểm tra bìa 
 // @match        https://wikicv.org/user/*/works*
 // @grant        none
@@ -135,6 +135,8 @@ css.textContent=`
 #cover-audit #wa-window .wa-filter-row select{flex:1!important}
 #cover-audit #wa-window .hd{flex:none!important;min-height:34px!important}
 #cover-audit #wa-window.wa-utilities-collapsed{height:min(86vh,700px)!important;max-height:min(86vh,700px)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+/* The close (×) action must override the expanded/collapsed layout. */
+#cover-audit #wa-window[hidden],#cover-audit #wa-window.wa-utilities-collapsed[hidden]{display:none!important;visibility:hidden!important;pointer-events:none!important}
 #cover-audit #wa-window.wa-utilities-collapsed>.hd{flex:0 0 auto!important}
 #cover-audit #wa-window.wa-utilities-collapsed>.body{display:flex!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;flex-direction:column!important}
 #cover-audit #wa-window.wa-utilities-collapsed .wa-live{flex:0 0 auto!important}
