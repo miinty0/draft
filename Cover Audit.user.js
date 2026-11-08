@@ -3,7 +3,7 @@
 // @namespace    https://github.com/miinty0/draft
 // @updateURL    https://raw.githubusercontent.com/miinty0/draft/main/Cover%20Audit.user.js
 // @downloadURL  https://raw.githubusercontent.com/miinty0/draft/main/Cover%20Audit.user.js
-// @version      2.1.3
+// @version      2.1.4
 // @description  Kiểm tra bìa 
 // @match        https://wikicv.org/user/*/works*
 // @grant        none
@@ -134,7 +134,7 @@ css.textContent=`
 #cover-audit #wa-window .wa-filter-row{display:flex!important;align-items:center!important;gap:8px!important;margin:6px 0 3px!important;font-size:12px!important;color:#516D73!important}
 #cover-audit #wa-window .wa-filter-row select{flex:1!important}
 #cover-audit #wa-window .hd{flex:none!important;min-height:34px!important}
-#cover-audit #wa-window.wa-utilities-collapsed{height:min(86vh,700px)!important;max-height:min(86vh,700px)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+#cover-audit #wa-window.wa-utilities-collapsed:not([hidden]){height:min(86vh,700px)!important;max-height:min(86vh,700px)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
 /* The close (×) action must override the expanded/collapsed layout. */
 #cover-audit #wa-window[hidden],#cover-audit #wa-window.wa-utilities-collapsed[hidden]{display:none!important;visibility:hidden!important;pointer-events:none!important}
 #cover-audit #wa-window.wa-utilities-collapsed>.hd{flex:0 0 auto!important}
@@ -142,7 +142,7 @@ css.textContent=`
 #cover-audit #wa-window.wa-utilities-collapsed .wa-live{flex:0 0 auto!important}
 #cover-audit #wa-window.wa-utilities-collapsed .wa-filter-row{flex:0 0 auto!important}
 #cover-audit #wa-window.wa-utilities-collapsed #wa-list{display:block!important;flex:1 1 auto!important;max-height:none!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important}
-#cover-audit #wa-window:not(.wa-utilities-collapsed){height:auto!important;display:block!important;overflow-y:auto!important}
+#cover-audit #wa-window:not(.wa-utilities-collapsed):not([hidden]){height:auto!important;display:block!important;overflow-y:auto!important}
 #cover-audit #wa-window .item small{display:block!important;overflow-wrap:anywhere!important;line-height:1.4!important;margin-top:2px!important}
 `;
 document.head.append(css);document.body.append(panel);
@@ -193,7 +193,22 @@ function placePanel(){
  windowPanel.style.left=left+'px';
  windowPanel.style.top=clamp(y,10,Math.max(10,innerHeight-h-10))+'px';
 }
-function setOpen(open){windowPanel.hidden=!open;launcher.setAttribute('aria-expanded',String(open));if(open)requestAnimationFrame(placePanel);}
+function setOpen(open){
+ // Inline !important overrides Wiki page CSS and our own layout display rules.
+ if(open){
+  windowPanel.hidden=false;
+  windowPanel.style.removeProperty('display');
+  windowPanel.style.removeProperty('visibility');
+  windowPanel.style.removeProperty('pointer-events');
+ }else{
+  windowPanel.hidden=true;
+  windowPanel.style.setProperty('display','none','important');
+  windowPanel.style.setProperty('visibility','hidden','important');
+  windowPanel.style.setProperty('pointer-events','none','important');
+ }
+ launcher.setAttribute('aria-expanded',String(open));
+ if(open)requestAnimationFrame(placePanel);
+}
 launcher.addEventListener('click',e=>{if(suppressClick){suppressClick=false;e.preventDefault();return;}setOpen(windowPanel.hidden);});
 el('close').onclick=()=>setOpen(false);
 let drag=null;
