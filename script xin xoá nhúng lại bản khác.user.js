@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.7.0
+// @version      1.7.1
 // @history      1.7.0: chọn tag khi lưu; cài đặt một/nhiều tag; thay tag hàng loạt; tên card và tìm không dấu; cập nhật mục G
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -117,18 +117,36 @@ const isWiki =
     if (!lastPageCount || lastPageCount > size) throw new Error('/book/index trang cuối trả mục lục rỗng hoặc không hợp lệ');
     return start + lastPageCount;
   }
+  function isSplitChapterTitle(title) {
+    return /^(?:phần|trang)\s*\d+/i.test((title || '').trim());
+  }
   function formatCurrentVersion(count, latest) {
     const title = (latest || '').trim();
-    const prefix = /^(?:chương|đệ)\s*(\d+)(?!\d)|^(\d+)(?!\d)/i.exec(title);
+    if (isSplitChapterTitle(title)) return title;
+    const prefix = /^(?:chương|đệ|thứ|chapter|chap)\s*(\d+)(?!\d)|^(\d+)(?!\d)/i.exec(title);
     const sameNumber = prefix && Number(prefix[1] || prefix[2]) === count;
     return `${count} chương${title && !sameNumber ? ` (${title})` : ''}`;
+  }
+  function setupCurrentVersionWarning(field) {
+    if (field.dataset.splitWarningReady) return;
+    field.dataset.splitWarningReady = '1';
+    const warning = document.createElement('div');
+    warning.className = 'sxxnl-split-chapter-warning';
+    warning.setAttribute('role', 'note');
+    warning.style.cssText = 'margin-top:5px;padding:5px 8px;border-radius:6px;background:#fef9c3;color:#854d0e;font-size:11px;line-height:1.4;';
+    warning.textContent = 'Hãy tự điền tên chương cuối: Phần/Trang là cách hệ thống chia, không phải số chương thật.';
+    field.after(warning);
+    const sync = () => { warning.hidden = !isSplitChapterTitle(field.value); };
+    field.addEventListener('input', sync);
+    sync();
   }
   let chapterCountPromise = null;
   let countGeneration = 0;
   function fillCurrentVersion(container) {
-    if (!isWiki || !countEnabled()) return;
     const field = container.querySelector('[data-field-name="currentVersion"]');
     if (!field) return;
+    setupCurrentVersionWarning(field);
+    if (!isWiki || !countEnabled()) return;
     const original = field.value;
     if (!chapterCountPromise) chapterCountPromise = countWikiChapters().catch(e => {
       console.warn('[sxxnl] Không đếm được chương, giữ Mới nhất:', e);
