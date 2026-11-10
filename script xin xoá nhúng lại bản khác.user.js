@@ -1,8 +1,7 @@
 // ==UserScript==
 // @name         Script xin xoá nhúng lại bản khác
 // @namespace    Miinty0
-// @version      1.7.2
-// @history      1.7.0: chọn tag khi lưu; cài đặt một/nhiều tag; thay tag hàng loạt; tên card và tìm không dấu; cập nhật mục G
+// @version      1.8.0
 // @description  Tạo và quản lý đơn xin xoá nhúng lại bản khác
 // @updateURL   https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
 // @downloadURL https://raw.githubusercontent.com/miinty0/draft/main/script%20xin%20xoá%20nhúng%20lại%20bản%20khác.user.js
@@ -20,12 +19,12 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  // AUTO-FILL DATA
 const isWiki =
   location.hostname.includes('wiki') &&
   location.pathname.startsWith('/truyen/');
-    let autoFill = { storyUrl: '', storyName: '', latestChapter: '', managers: '' };
+    let autoFill = { storyUrl: '', storyName: '', latestChapter: '', managers: '', choTaiRaw: '' };
   if (isWiki) {
+    autoFill.choTaiRaw = extractRawLinks(document, window.location.href);
     autoFill.storyUrl = window.location.href;
     const titleEl = document.querySelector('.cover-info h2');
     autoFill.storyName = titleEl?.innerText?.trim() || '';
@@ -35,6 +34,113 @@ const isWiki =
     autoFill.managers = [...document.querySelectorAll('.book-manager')]
       .map(el => '@' + el.getAttribute('data-id'))
       .join(' ');
+  }
+  function rawSourceUrl(value, baseUrl = location.href) {
+    try {
+      const url = new URL(value, baseUrl);
+      if (url.origin !== new URL(baseUrl).origin || url.pathname !== '/redirect') return '';
+      let target = url.searchParams.get('u') || '';
+      for (let i = 0; i < 3 && /^https?%3a/i.test(target); i++) target = decodeURIComponent(target);
+      const source = new URL(target);
+      return /^https?:$/.test(source.protocol) ? source.href : '';
+    } catch { return ''; }
+  }
+  function extractRawLinks(doc, baseUrl) {
+    return [...new Set([...doc.querySelectorAll('.book-desc a[href], .cover-info a[href]')]
+      .map(a => rawSourceUrl(a.getAttribute('href'), baseUrl)).filter(Boolean))].join('\n');
+  }
+  function renderLinkedText(container, value) {
+    container.replaceChildren();
+    const text = String(value || '');
+    const pattern = /https?:\/\/[^\s<>"']+/gi;
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+      let url = match[0].replace(/[.,;:!?。，；！？]+$/, '');
+      while (url.endsWith(')') && (url.match(/\)/g) || []).length > (url.match(/\(/g) || []).length) url = url.slice(0, -1);
+      container.appendChild(document.createTextNode(text.slice(last, match.index)));
+      const link = document.createElement('a');
+      link.href = url; link.textContent = url;
+      link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.addEventListener('click', e => e.stopPropagation());
+      container.append(link, document.createTextNode(match[0].slice(url.length)));
+      last = match.index + match[0].length;
+    }
+    container.appendChild(document.createTextNode(text.slice(last)));
+  }
+  function configureRawTextarea(ta) {
+    ta.rows = 3;
+    ta.style.cssText += ';height:88px !important;min-height:72px;white-space:pre-wrap !important;overflow:auto;resize:vertical;';
+    ta.placeholder = 'Note, link tải raw và ghi chú; có thể nhập nhiều dòng';
+  }
+  function collectionOriginalNames(doc) {
+    for (const a of doc.querySelectorAll('a[href]')) {
+      try {
+        const url = new URL(a.getAttribute('href'), location.origin);
+        if (!/^(?:www\.)?google\.com$/i.test(url.hostname) || url.pathname !== '/search') continue;
+        const match = (url.searchParams.get('q') || '').trim().match(/^(.+?)\s+\+\s+(.+)$/);
+        if (match && match[1].trim() && match[2].trim()) return { title: match[1].trim(), author: match[2].trim() };
+      } catch (_) {}
+    }
+    return null;
+  }
+  const originalNamesCache = new Map();
+  async function resolveOriginalNames(storyUrl) {
+    let url;
+    try {
+      url = new URL(storyUrl);
+      if (!/^https?:$/.test(url.protocol) || !/^\/truyen\/[^/]+\/?$/.test(url.pathname)) return '';
+      url.pathname = url.pathname.replace(/^\/truyen\//, '/linksuutam/');
+      url.search = ''; url.hash = '';
+    } catch { return ''; }
+    const key = url.href;
+    if (!originalNamesCache.has(key)) {
+      originalNamesCache.set(key, (async () => {
+        try {
+          let html;
+          if (url.origin === location.origin) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            try {
+              const response = await fetch(key, { credentials: 'same-origin', signal: controller.signal });
+              if (!response.ok || (response.url && new URL(response.url).pathname !== url.pathname)) throw new Error('Không đọc được linksuutam');
+              html = await response.text();
+            } finally { clearTimeout(timeout); }
+          } else {
+            html = await new Promise((resolve, reject) => GM_xmlhttpRequest({
+              method: 'GET', url: key, timeout: 15000,
+              onload: r => r.status === 200 && (!r.finalUrl || new URL(r.finalUrl).pathname === url.pathname)
+                ? resolve(r.responseText) : reject(new Error('Không đọc được linksuutam')),
+              onerror: reject, ontimeout: reject
+            }));
+          }
+          const names = collectionOriginalNames(new DOMParser().parseFromString(html, 'text/html'));
+          if (!names) throw new Error('Không tìm thấy tên gốc và tác giả');
+          return `${names.title} + ${names.author}`;
+        } catch (error) {
+          originalNamesCache.delete(key);
+          console.warn('[Xin xoá nhúng lại] Không lấy được tên từ linksuutam', error);
+          return '';
+        }
+      })());
+    }
+    return originalNamesCache.get(key);
+  }
+  function bindOriginalNote(container) {
+    const story = container.querySelector('[data-field-name="storyUrl"]');
+    const note = container.querySelector('[data-field-name="choTaiRaw"]');
+    let sequence = 0, previousLine = '';
+    const refresh = async () => {
+      const current = ++sequence;
+      const value = story.value.trim();
+      const line = await resolveOriginalNames(value);
+      if (current !== sequence || story.value.trim() !== value || !line) return;
+      let rest = note.value;
+      if (previousLine && rest.split('\n')[0] === previousLine) rest = rest.slice(previousLine.length).replace(/^\n/, '');
+      note.value = rest.split('\n')[0] === line ? rest : line + (rest ? '\n' + rest : '');
+      previousLine = line;
+    };
+    story.addEventListener('change', refresh);
+    return refresh;
   }
   const countEnabled = () => GM_getValue('sxxnl_auto_count', true) !== false;
   function indexBootstrap() {
@@ -160,7 +266,6 @@ const isWiki =
       }
     });
   }
-  //  GM STORAGE
   function getsxxnl() {
     try {
       const raw = GM_getValue('sxxnl', null);
@@ -277,7 +382,6 @@ const isWiki =
     if (limited) showNotification(`${limited} đơn đã đủ 5 tag`);
     return { changed, limited, alreadyHad };
   }
-  // HELPERS
   function removeAccents(str) {
     return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
   }
@@ -371,7 +475,6 @@ function validateDateField(val) {
     textarea.selectionStart = textarea.selectionEnd = start + text.length;
     textarea.dispatchEvent(new Event('input'));
   }
-  // UPLOAD TO CATBOX
   function uploadToCatbox(file, callback) {
     const formData = new FormData();
     formData.append('reqtype', 'fileupload');
@@ -412,7 +515,6 @@ function validateDateField(val) {
       }
     });
   }
-  // STYLES
   const style = document.createElement('style');
   style.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
@@ -677,11 +779,19 @@ function validateDateField(val) {
     .sxxnl-tag-manager-row input[type=color] { width:35px;height:30px;padding:1px; }
     .sxxnl-don-body {
       display: none; padding: 10px; border-top: 1px solid #f0f0f0;
-      font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.75;
+      font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif !important;
+      font-size: 13px !important; color: #333; white-space: pre-wrap; line-height: 1.75;
+      min-width: 0; overflow-wrap: anywhere; word-break: normal;
       background: #fafafa;
     }
     .sxxnl-don-body.open { display: block; }
-    .sxxnl-don-body a { color: #2563eb; text-decoration: none; }
+    #sxxnl-panel .sxxnl-don-body a {
+      color: #2563eb; text-decoration: none;
+      font-family: inherit !important; font-size: inherit !important;
+      font-weight: inherit !important; line-height: inherit !important;
+      white-space: pre-wrap !important; overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+    }
     .sxxnl-don-body a:hover { text-decoration: underline; }
     .sxxnl-tab-content::-webkit-scrollbar { width: 5px; }
     .sxxnl-tab-content::-webkit-scrollbar-track { background: transparent; }
@@ -739,7 +849,6 @@ function validateDateField(val) {
       font-family: inherit; display: flex; align-items: center; gap: 4px;
     }
     .sxxnl-back-btn:hover { text-decoration: underline; }
-    /* Edit modal */
     #sxxnl-edit-modal {
       position: fixed; inset: 0; z-index: 9999999;
       background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center;
@@ -805,7 +914,6 @@ function validateDateField(val) {
       border-color: #93c5fd; background: #dbeafe; outline: none;
     }
     .sxxnl-don-action-btn.undone:hover { border-color: #f59e0b; background: #fef9c3; }
-    /* Info popover */
     #sxxnl-info-popover {
       position: fixed; z-index: 99999999; background: #f8f8f8; border-radius: 16px;
       box-shadow: 0 12px 48px rgba(0,0,0,0.18); width: 390px; max-height: 60vh;
@@ -823,7 +931,6 @@ function validateDateField(val) {
     .sxxnl-info-body::-webkit-scrollbar { width: 5px; }
     .sxxnl-info-body::-webkit-scrollbar-thumb { background: #ddd; border-radius: 99px; }
     .sxxnl-info-content { font-size: 13px; line-height: 1.8; color: #333; white-space: pre-wrap; }
-    /* Info select in header */
     #sxxnl-info-select {
       display: inline-block !important;
       visibility: visible !important;
@@ -850,12 +957,10 @@ function validateDateField(val) {
     }
   `;
   document.head.appendChild(style);
-  // ICON
   const icon = document.createElement('div');
   icon.id = 'sxxnl-icon';
   icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/></svg>`;
   document.body.appendChild(icon);
-  // DRAG
   let dragging = false, dragOffX = 0, dragOffY = 0, moved = false;
   let dragTarget = 'panel';
   function moveAll(newIconLeft, newIconTop) {
@@ -915,7 +1020,6 @@ function validateDateField(val) {
     if (dragTarget === 'icon' && dragging && !moved) togglePanel();
     dragging = false;
   });
-  // PANEL
   const panel = document.createElement('div');
   panel.id = 'sxxnl-panel';
   panel.innerHTML = `
@@ -954,7 +1058,6 @@ function validateDateField(val) {
     settingsBox.style.display = open ? 'block' : 'none';
     settingsBtn.setAttribute('aria-expanded', String(open));
   });
-  // EDIT MODAL
   const editModal = document.createElement('div');
   editModal.id = 'sxxnl-edit-modal';
   editModal.innerHTML = `<div class="sxxnl-edit-box"></div>`;
@@ -986,7 +1089,7 @@ function validateDateField(val) {
     soRawChapName:  'Số raw (tên chương):',
     giaiThich:      'Giải thích thêm:',
     linkBanNhung:   'Link bản nhúng lại:',
-    choTaiRaw:      'Chỗ tải raw:',
+    choTaiRaw:      'Note:',
   };
   function requestFieldLabel(key, muc) {
     const isG = /^(?:mục\s*)?g[.)]?$/i.test(String(muc || '').trim());
@@ -1105,7 +1208,6 @@ function validateDateField(val) {
           openDonInfoPopover(mucList, donLabel, editInfoBtn);
         });
       }
-      // Form-type tab bar
       const tabBar = document.createElement('div');
       tabBar.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;';
       const formTypes = [
@@ -1152,6 +1254,7 @@ function validateDateField(val) {
         ta.value = f[key] || '';
         row.appendChild(lbl);
         row.appendChild(ta);
+        if (key === 'choTaiRaw') configureRawTextarea(ta);
         fieldsWrap.appendChild(row);
       });
       const editMuc = fieldsWrap.querySelector('[data-edit-field="muc"]');
@@ -1161,7 +1264,6 @@ function validateDateField(val) {
         });
       });
       editBox.appendChild(fieldsWrap);
-      // Buttons
       const btns = document.createElement('div');
       btns.className = 'sxxnl-edit-btns';
       const cancelBtn = document.createElement('button');
@@ -1235,7 +1337,6 @@ function validateDateField(val) {
   document.addEventListener('mouseup', () => {
     panelHeader.style.cursor = 'grab';
   });
-  // Tab switching
   let currentMainTab = '1';
   panel.querySelectorAll('.sxxnl-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1247,7 +1348,6 @@ function validateDateField(val) {
       if (currentMainTab === '2') renderTab2();
     });
   });
-  // TAB 1: FORM BUILDER
   const INFO_CONTENT = {
     'a': `**Bản nhúng đang có vi phạm, ví dụ: lỗi trình bày, sai tag... và chủ truyện không phải Trạm Rác.**\n\n*  Trường hợp hồ sơ của chủ truyện đã có mức phạt: titan sẽ xóa bản nhúng cũ để user nhúng lại bản mới.\n\n*  Trường hợp chủ truyện chưa có hồ sơ hoặc hồ sơ chưa có mức phạt: cần giữ lại chứng cứ để tính mức phạt nên titan sẽ không xóa bản nhúng cũ nhưng user vẫn được duyệt nhúng bản mới. Titan sẽ để lại lời nhắn trong hồ sơ để sau khi có mức phạt, truyện cũ bị xóa vĩnh viễn. Sau khi nhúng bản mới, user hãy dẫn link đơn xin xóa nhúng lại ở dưới văn án, để tránh bị cử báo vi phạm nhúng trùng.\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
     'b': `**Bản nhúng đang có vi phạm, ví dụ: lỗi trình bày, sai tag... và chủ truyện đang là Trạm Rác.**\n\n-User phải đảm bảo chính mình sẽ nhúng lại với số chương nhiều hơn hoặc bằng bản nhúng cũ và không bị lỗi.`,
@@ -1426,9 +1526,12 @@ function validateDateField(val) {
     return makeField('Giải thích thêm:', ta);
   }
   function makeChoTaiRaw() {
-    const ta = makeTextarea(2);
+    if (isWiki) autoFill.choTaiRaw = extractRawLinks(document, window.location.href);
+    const ta = makeTextarea(3, '', autoFill.choTaiRaw);
     ta.dataset.fieldName = 'choTaiRaw';
-    return makeField('Chỗ tải raw:', ta);
+    const field = makeField('Note:', ta);
+    configureRawTextarea(ta);
+    return field;
   }
   function makeLinkField() {
     const wrap = document.createElement('div');
@@ -1496,7 +1599,7 @@ function validateDateField(val) {
       addField('Bản nhúng đang có:', 'currentVersion', af.latestChapter);
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
-      addField('Chỗ tải raw:', 'choTaiRaw');
+      container.appendChild(makeChoTaiRaw());
     }
     if (subTabId === '1602') {
       addField('Truyện muốn xin xóa:', 'storyUrl', af.storyUrl);
@@ -1507,7 +1610,7 @@ function validateDateField(val) {
       container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
-      addField('Chỗ tải raw:', 'choTaiRaw');
+      container.appendChild(makeChoTaiRaw());
     }
     if (subTabId === '1603') {
       addField('Truyện muốn xin xóa:', 'storyUrl', af.storyUrl);
@@ -1543,7 +1646,7 @@ function validateDateField(val) {
       container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
-      addField('Chỗ tải raw:', 'choTaiRaw');
+      container.appendChild(makeChoTaiRaw());
     }
     if (subTabId === '1604') {
       addField('Truyện muốn xin xóa:', 'storyUrl', af.storyUrl);
@@ -1578,7 +1681,7 @@ function validateDateField(val) {
       giaiThichWrap.appendChild(radioGroup);
       container.appendChild(giaiThichWrap);
       container.appendChild(makeLinkField());
-      addField('Chỗ tải raw:', 'choTaiRaw');
+      container.appendChild(makeChoTaiRaw());
     }
     if (subTabId === '1605') {
       addField('Truyện muốn xin xóa:', 'storyUrl', af.storyUrl);
@@ -1588,7 +1691,7 @@ function validateDateField(val) {
       container.appendChild(makeInlineChapterField('Số raw mà mình đang có để nhúng lại:'));
       container.appendChild(makeGiaiThich(true));
       container.appendChild(makeLinkField());
-      addField('Chỗ tải raw:', 'choTaiRaw');
+      container.appendChild(makeChoTaiRaw());
     }
     container.appendChild(tagField);
     const errHolder = document.createElement('div');
@@ -1598,10 +1701,12 @@ function validateDateField(val) {
     const submitBtn = document.createElement('button');
     submitBtn.className = 'sxxnl-submit';
     submitBtn.textContent = 'Submit';
+    const refreshNote = bindOriginalNote(container);
+    let noteReady = refreshNote();
     submitBtn.addEventListener('click', async () => {
       if (submitBtn.disabled) return;
       submitBtn.disabled = true;
-      try { await submitForm(container, subTabId); }
+      try { await noteReady; await refreshNote(); await submitForm(container, subTabId); }
       finally { submitBtn.disabled = false; }
     });
     container.appendChild(submitBtn);
@@ -1696,7 +1801,6 @@ function validateDateField(val) {
     buildTab1();
   }
   buildTab1();
-  // TAB 2: ĐƠN ĐÃ LƯU
   const TYPE_LABELS = {
     '1601': 'Đơn 1601: mục k',
     '1602': 'Đơn 1602',
@@ -1753,7 +1857,7 @@ function validateDateField(val) {
     }
     if (f.giaiThich)      lines.push(`-Giải thích thêm: ${f.giaiThich}`);
     if (f.linkBanNhung)   lines.push(`-Link bản nhúng lại: ${f.linkBanNhung}`);
-    if (f.choTaiRaw)      lines.push(`-Chỗ tải raw: ${f.choTaiRaw}`);
+    if (f.choTaiRaw)      lines.push(`-Note: ${f.choTaiRaw}`);
     return lines.join('\n');
   }
   function donToClipText(don) {
@@ -1787,7 +1891,6 @@ function validateDateField(val) {
   async function renderTab2() {
     const content2 = document.getElementById('sxxnl-content-2');
     content2.innerHTML = '';
-    // Toolbar
     const toolbar = document.createElement('div');
     toolbar.className = 'sxxnl-toolbar sxxnl-actions';
     const filterRow = document.createElement('div');
@@ -1806,7 +1909,6 @@ function validateDateField(val) {
     selectAllLabel.className = 'sxxnl-select-all';
     selectAllLabel.append(cbAll, document.createTextNode('Tất cả'));
     toolbar.appendChild(selectAllLabel);
-    // Filter dropdown
     const filterSel = document.createElement('select');
     filterSel.className = 'sxxnl-select browser-default';
     FILTER_OPTIONS.forEach(opt => {
@@ -1825,7 +1927,6 @@ function validateDateField(val) {
     tagFilter.title = 'Lọc tag cùng với bộ lọc loại đơn (AND)';
     tagFilter.addEventListener('change', () => { tab2TagFilter=tagFilter.value; selectedIds.clear(); renderTab2(); });
     addFilter('🏷 Lọc tag', tagFilter);
-    // Sort dropdown
     const sortSel = document.createElement('select');
     sortSel.className = 'sxxnl-select browser-default';
     [['newest','Mới nhất'],['oldest','Cũ nhất']].forEach(([v,l]) => {
@@ -1916,13 +2017,12 @@ function validateDateField(val) {
     });
     toolbar.appendChild(btnDel);
     content2.append(filterRow, bulkRow, toolbar);
-    // Row 2: search + count
     const toolbar2 = document.createElement('div');
     toolbar2.className = 'sxxnl-toolbar';
     const searchInput = document.createElement('input');
     searchInput.className = 'sxxnl-search';
     searchInput.style.flex = '1';
-    searchInput.placeholder = '🔍 Tìm kiếm tên/quản lý/chỗ tải raw...';
+    searchInput.placeholder = '🔍 Tìm kiếm tên/quản lý/note...';
     searchInput.value = tab2Search;
     clearTimeout(tab2SearchTimer);
     searchInput.addEventListener('input', () => {
@@ -1982,8 +2082,7 @@ function validateDateField(val) {
       const body = document.createElement('div');
       body.className = 'sxxnl-don-body';
       const text = donToText(don);
-      const htmlText = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-      body.innerHTML = htmlText;
+      renderLinkedText(body, text);
       const title = document.createElement('span');
       title.className = 'sxxnl-don-title';
       title.textContent = don.storyName || don.storyUrl || '(Không tên)';
@@ -2116,7 +2215,6 @@ function validateDateField(val) {
     }
     draw();
   }
-  // INFORMATION POPOVER
   const infoPopover = document.createElement('div');
   infoPopover.id = 'sxxnl-info-popover';
   const INFO_SELECT_OPTIONS = [
@@ -2240,4 +2338,8 @@ function validateDateField(val) {
     }
   });
 })();
+
+
+
+
 
